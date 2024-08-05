@@ -1,4 +1,4 @@
-# PDF Parser
+# Document Parser
 This project presents a Flask-based web application with a focus on user interface and optional AI integration. The primary command, `make run`, initiates the web server and provides access to the core functionalities. Advanced users can optionally enhance the application by training a model or updating it with the best version.
 
 ## Running the Web Application
