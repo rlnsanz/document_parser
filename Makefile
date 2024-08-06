@@ -1,6 +1,6 @@
 .PHONY: run install clean apply_split train install_tesseract
 
-                                                 
+												 
 #  _____ __    _____ _____ _____ __    _____ _____ 
 # |   __|  |  |     | __  |  _  |  |  |  _  |   | |
 # |   __|  |__|  |  |    -|   __|  |__|     | | | |
@@ -17,10 +17,13 @@ GIT_COMMIT := $(shell git rev-parse HEAD | cut -c 1-6)
 PDFS := $(wildcard app/static/private/pdfs/*.pdf)
 
 doc_links:
-	@echo "Creating softlink to PDF directory..."
-	@ln -sf $(realpath private) app/static/private
+	@if [ -L app/static/private ]; then \
+		echo "Softlink already exists."; \
+	else \
+		echo "Creating softlink to PDF directory..."; \
+		ln -sf $(realpath private) app/static/private; \
+	fi
 	@touch doc_links
-
 
 process_pdfs: doc_links pdf_demux.py 
 	@echo "Processing PDF files..."
@@ -89,9 +92,6 @@ clean:
 	@echo "Cleaning up..."
 	@find . -type f -name '*.pyc' -delete
 	@find . -type d -name '__pycache__' -delete
-	@find app/static/private/imgs -mindepth 1 -delete
-	@find app/static/private/txts -mindepth 1 -delete
-	@find app/static/private/ocr -mindepth 1 -delete
 	@rm -f infer
 	@rm -f process_pdfs
 	@rm -f hand_label
