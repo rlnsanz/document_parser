@@ -6,7 +6,7 @@ import flor
 import warnings
 
 from . import config
-from .constants import PDF_DIR, IMGS_DIR
+from .constants import DOC_DIR
 
 app = Flask(__name__)
 pdf_names = []

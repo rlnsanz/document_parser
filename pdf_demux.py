@@ -4,10 +4,9 @@ from PIL import Image
 import pytesseract
 from multiprocessing import Pool
 
-from app.constants import PDF_DIR, IMGS_DIR, TXT_DIR, OCR_DIR
+from app.constants import DOC_DIR
 from tqdm import tqdm
 import io
-import math
 import time
 
 
@@ -21,6 +20,7 @@ def resize_image(image_path, size=(300, 400)):
 
 
 def process_page(pdf_path, page_num, img_path, txt_path, ocr_path):
+    base, ext = os.path.splitext(pdf_path)
     doc = fitz.open(pdf_path)  # type: ignore
     page = doc.load_page(page_num)
 
@@ -32,9 +32,7 @@ def process_page(pdf_path, page_num, img_path, txt_path, ocr_path):
 
     if page_num == 0:
         # Save the first page as the preview
-        preview_path = os.path.join(
-            IMGS_DIR, os.path.splitext(os.path.basename(pdf_path))[0] + ".png"
-        )
+        preview_path = os.path.join(base, "preview.png")
         pix.save(preview_path)
         resize_image(preview_path)
 
@@ -57,11 +55,15 @@ def process_page(pdf_path, page_num, img_path, txt_path, ocr_path):
 
 def process_pdf(pdf_path, all_args):
     # set img_path, txt_path, and ocr_path
-    img_path = os.path.join(IMGS_DIR, os.path.splitext(os.path.basename(pdf_path))[0])
+    base, ext = os.path.splitext(pdf_path)
+
+    img_path = os.path.join(base, "images")
     os.makedirs(img_path, exist_ok=True)
-    txt_path = os.path.join(TXT_DIR, os.path.splitext(os.path.basename(pdf_path))[0])
+
+    txt_path = os.path.join(base, "txt")
     os.makedirs(txt_path, exist_ok=True)
-    ocr_path = os.path.join(OCR_DIR, os.path.splitext(os.path.basename(pdf_path))[0])
+
+    ocr_path = os.path.join(base, "ocr")
     os.makedirs(ocr_path, exist_ok=True)
 
     doc = fitz.open(pdf_path)  # type: ignore
@@ -83,11 +85,9 @@ if __name__ == "__main__":
     else:
         max_workers = 4
 
-    for pdf_file in tqdm(os.listdir(PDF_DIR)):
-        if not pdf_file.endswith(".pdf"):
-            continue
-
-        pdf_path = os.path.join(PDF_DIR, pdf_file)
+    pdf_files = [each for each in os.listdir(DOC_DIR) if each.endswith(".pdf")]
+    for pdf_file in tqdm(pdf_files):
+        pdf_path = os.path.join(DOC_DIR, pdf_file)
         process_pdf(pdf_path, all_args)
 
     # Create a pool of workers and distribute the tasks
