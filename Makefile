@@ -30,6 +30,11 @@ process_pdfs: doc_links pdf_demux.py
 	@python pdf_demux.py
 	@touch process_pdfs
 
+process_images: doc_links image_demux.py
+	@echo "Processing Image files..."
+	@python image_demux.py
+	@touch process_images
+
 featurize: process_pdfs featurize.py
 	@echo "Featurizing Data..."
 	@python featurize.py
@@ -97,4 +102,5 @@ clean:
 	@rm -f hand_label
 	@rm -f featurize
 	@rm -f doc_links
+	@rm -f process_images
 
