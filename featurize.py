@@ -1,6 +1,6 @@
 import os
 import re
-from app.constants import *
+from app.constants import DOC_DIR
 
 import flor
 
@@ -13,12 +13,9 @@ def merge_text_lattice(pdf_name, page_num, txt_page_numbers, ocr_page_numbers):
 
     metadata.append({"pdf_name": pdf_name})
     # Construct path to the text file
-    txt_name = os.path.join(
-        TXT_DIR,
-        os.path.splitext(os.path.basename(pdf_name))[0],
-        f"page_{page_num}.txt",
-    )
-    last_page = len(os.listdir(os.path.dirname(txt_name)))
+    txt_path = os.path.join(DOC_DIR, pdf_name, "txt")
+    txt_name = os.path.join(txt_path, f"page_{page_num}.txt")
+    last_page = len(os.listdir(txt_path))
 
     # Analyze the text on the page
     headings, page_numbers, txt_text = analyze_text(txt_name)
@@ -41,11 +38,8 @@ def merge_text_lattice(pdf_name, page_num, txt_page_numbers, ocr_page_numbers):
     )
 
     # Construct path to the OCR file
-    ocr_name = os.path.join(
-        OCR_DIR,
-        os.path.splitext(os.path.basename(pdf_name))[0],
-        f"page_{page_num}.txt",
-    )
+    ocr_path = os.path.join(DOC_DIR, pdf_name, "ocr")
+    ocr_name = os.path.join(ocr_path, f"page_{page_num}.txt")
     # Analyze the ocr on the page
     headings, page_numbers, ocr_text = analyze_text(ocr_name)
     # Add the results to the metadata dictionary
@@ -123,13 +117,27 @@ def analyze_text(text_file):
 
 if __name__ == "__main__":
     pdf_files = [
-        os.path.splitext(f)[0] for f in os.listdir(PDF_DIR) if f.endswith(".pdf")
+        os.path.splitext(f)[0] for f in os.listdir(DOC_DIR) if f.endswith(".pdf")
     ]
 
     for doc_name in flor.loop("document", pdf_files):
         txt_page_numbers = {}
         ocr_page_numbers = {}
         for page in flor.loop(
-            "page", range(len(os.listdir(os.path.join(IMGS_DIR, doc_name))))
+            "page", range(len(os.listdir(os.path.join(DOC_DIR, doc_name, "images"))))
         ):
             merge_text_lattice(doc_name, page, txt_page_numbers, ocr_page_numbers)
+
+    image_files = [
+        each for each in os.listdir(DOC_DIR) if each.endswith((".png", ".jpg", ".jpeg"))
+    ]
+    for image_file in flor.loop("image", image_files):
+        base, ext = os.path.splitext(image_file)
+        image_path = os.path.join(DOC_DIR, base)
+
+        original_path = os.path.join(image_path, image_file)
+        txt_path = os.path.join(image_path, "ocr.txt")
+
+        _, _, text = analyze_text(txt_path)
+        flor.log("merge-source", "ocr")
+        flor.log("merged-text", text)
