@@ -35,7 +35,7 @@ process_images: doc_links image_demux.py
 	@python image_demux.py
 	@touch process_images
 
-featurize: process_pdfs featurize.py
+featurize: process_pdfs process_images featurize.py
 	@echo "Featurizing Data..."
 	@python featurize.py
 	@touch featurize
