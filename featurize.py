@@ -63,11 +63,11 @@ def merge_text_lattice(pdf_name, page_num, txt_page_numbers, ocr_page_numbers):
         len(txt_text) < len(ocr_text) // 2
         or len(txt_text.strip()) < len(txt_text) * 3 // 4
     ):
-        flor.log("merge-source", "ocr")
-        metadata.append({"ocr-text": flor.log("merged-text", ocr_text)})
+        flor.log("page-source", "ocr")
+        metadata.append({"ocr-text": flor.log("page-text", ocr_text)})
     else:
-        flor.log("merge-source", "txt")
-        metadata.append({"txt-text": flor.log("merged-text", txt_text)})
+        flor.log("page-source", "txt")
+        metadata.append({"txt-text": flor.log("page-text", txt_text)})
 
     metadata.clear()
 
@@ -139,5 +139,4 @@ if __name__ == "__main__":
         txt_path = os.path.join(image_path, "ocr.txt")
 
         _, _, text = analyze_text(txt_path)
-        flor.log("merge-source", "ocr")
-        flor.log("merged-text", text)
+        flor.log("image-text", text)
