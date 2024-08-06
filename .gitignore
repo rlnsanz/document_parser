@@ -1,5 +1,4 @@
 .vscode/
-app/static/private/
 private/
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -169,3 +168,4 @@ hand_label
 featurize
 ner_parse
 pdf_links
+app/static/private

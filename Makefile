@@ -10,22 +10,19 @@
 
 # Set the FLASK_APP environment variable
 export FLASK_APP=run.py
-export FLASK_ENV=development
+export FLASK_ENV=developmentß
 
 UNAME_S := $(shell uname -s)
 GIT_COMMIT := $(shell git rev-parse HEAD | cut -c 1-6)
 PDFS := $(wildcard app/static/private/pdfs/*.pdf)
 
-pdf_links: $(wildcard public/*.pdf)
-	@echo "Creating softlinks to PDF files..."
-	@for pdf in public/*.pdf; do \
-		echo $$pdf; \
-		mkdir -p app/static/private/pdfs; \
-		ln -sf $$(realpath $$pdf) app/static/private/pdfs/$$(basename $$pdf); \
-	done
-	@touch pdf_links
+doc_links:
+	@echo "Creating softlink to PDF directory..."
+	@ln -sf $(realpath private) app/static/private
+	@touch doc_links
 
-process_pdfs: pdf_links pdf_demux.py 
+
+process_pdfs: doc_links pdf_demux.py 
 	@echo "Processing PDF files..."
 	@python pdf_demux.py
 	@touch process_pdfs
@@ -56,33 +53,6 @@ train: featurize hand_label train.py
 apply_split: split.py clean
 	@echo "Applying split..."
 	@python split.py
-	
-ner_parse:
-	@if [ -f ~/.flor/court-records-processing.db ]; then \
-		mv ~/.flor/court-records-processing.db ~/.flor/court-records-processing.db.bak; \
-	fi
-	@if [ -f ~/.flor/pdf_parser.db ]; then \
-		mv ~/.flor/pdf_parser.db ~/.flor/court-records-processing.db; \
-	fi
-	@ls -lagh ~/.flor
-	@if [ -d ../court_records ]; then \
-		mv ../court_records ../court_records.bak; \
-	fi
-	@ln -sf $(realpath app/static/private/pdfs) ../court_records
-
-	@cd ../court-records-processing && (git checkout flor.pdf_parser$(GIT_COMMIT) || git checkout -b flor.pdf_parser$(GIT_COMMIT)) && make case_file_processer
-
-	@rm -f ../court_records
-	@if [ -d ../court_records.bak ]; then \
-		mv ../court_records.bak ../court_records; \
-	fi
-	@mv ~/.flor/court-records-processing.db ~/.flor/pdf_parser.db
-	@if [ -f ~/.flor/court-records-processing.db.bak ]; then \
-		mv ~/.flor/court-records-processing.db.bak ~/.flor/court-records-processing.db; \
-	fi
-	@ls -lagh ~/.flor
-	@touch ner_parse
-
 
 # Run the Flask development server
 run_infer: featurize infer
@@ -126,5 +96,5 @@ clean:
 	@rm -f process_pdfs
 	@rm -f hand_label
 	@rm -f featurize
-	@rm -f ner_parse
-	@rm -f pdf_links
+	@rm -f doc_links
+
