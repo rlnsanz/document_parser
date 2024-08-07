@@ -120,7 +120,7 @@
         });
 
         async function loadPdf() {
-            const url = "{{ url_for('static', filename='private/pdfs/' + pdf_name) }}";
+            const url = "{{ url_for('static', filename='private/' + pdf_name) }}";
             const loadingTask = pdfjsLib.getDocument(url);
 
             try {

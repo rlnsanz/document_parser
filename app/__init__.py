@@ -63,9 +63,7 @@ def index():
             pdf_previews.append((doc_name + ".pdf", relative_image_path))
 
     image_files = [
-        os.path.splitext(f)[0]
-        for f in os.listdir(DOC_DIR)
-        if f.endswith((".png", ".jpg", ".jpeg"))
+        f for f in os.listdir(DOC_DIR) if f.endswith((".png", ".jpg", ".jpeg"))
     ]
 
     if image_files:
@@ -75,15 +73,18 @@ def index():
         # Resize each image and create a list of tuples (pdf, image_path)
         image_previews = []
         for image_name in flor.loop("image", image_files):
-            image_path = os.path.join(DOC_DIR, image_name, "preview.png")
+            base, ext = os.path.splitext(image_name)
+            image_path = os.path.join(DOC_DIR, base, "preview.png")
             assert os.path.exists(image_path)
             # Only include the part of the image_path that comes after 'app/static/private/imgs'
             relative_image_path = os.path.relpath(image_path, start="app/static")
             print("relative image path", relative_image_path)
-            image_previews.append((image_name + ".pdf", relative_image_path))
+            image_previews.append((image_name, relative_image_path))
 
     # Render the template with the PDF previews
-    return render_template("index.html", pdf_previews=(pdf_previews + image_previews))
+    return render_template(
+        "index.html", pdf_previews=pdf_previews, image_previews=image_previews
+    )
 
 
 @app.route("/view-pdf")
@@ -96,21 +97,34 @@ def view_pdf():
     pdf_name = secure_filename(pdf_name)
     pdf_names.append(pdf_name)
 
-    pdf_path = os.path.join(PDF_DIR, pdf_name)
+    pdf_path = os.path.join(DOC_DIR, pdf_name)
 
     if os.path.isfile(pdf_path):
-        # TODO: NER
-        labeling = flor.arg("labeling", 0)
-        if labeling == 0:
-            return render_template(
-                "label_pdf.html", pdf_name=pdf_name, colors=get_colors()
-            )
-        elif labeling == 1:
-            return render_template("ner_pdf.html", pdf_name=pdf_name)
-        else:
-            raise
+        return render_template("label_pdf.html", pdf_name=pdf_name, colors=get_colors())
     else:
         return "File not found.", 404
+
+
+@app.route("/view-image")
+def view_image():
+    image_name = request.args.get("name")
+    if not image_name:
+        return "No file specified.", 400
+
+    if not memoized_images.empty:
+        text = memoized_images["image-text"][
+            memoized_images["image_value"] == image_name
+        ].values[0]
+    else:
+        text = ""
+
+    image_name = secure_filename(image_name)
+    image_names.append(image_name)
+
+    image_path = os.path.join(DOC_DIR, image_name)
+
+    if os.path.isfile(image_path):
+        return render_template("label_image.html", image_name=image_name, text=text)
 
 
 @app.route("/save_colors", methods=["POST"])
@@ -136,10 +150,10 @@ def metadata_for_page(page_num: int):
             memoized_pdfs["document_value"] == os.path.splitext(pdf_names[-1])[0]
         ][memoized_pdfs["page"] == page_num + 1].to_dict(orient="records")[0]
     if view_selection == 0:
-        if record["merge-source"] == "ocr":
-            return jsonify([{f"ocr-page-{page_num+1}": record["merged-text"]}])
+        if record["page-source"] == "ocr":
+            return jsonify([{f"ocr-page-{page_num+1}": record["page-text"]}])
         else:
-            return jsonify([{f"txt-page-{page_num+1}": record["merged-text"]}])
+            return jsonify([{f"txt-page-{page_num+1}": record["page-text"]}])
     elif view_selection == 1:
         # Retrieve metadata for the specified page number
         metadata: List[Dict[str, Any]] = [{"page_num": page_num + 1}]

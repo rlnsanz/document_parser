@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Image</title>
+</head>
+
+<body>
+    <h1>Image Viewer</h1>
+    <div>
+        <img src="{{ url_for('static', filename='private/' + image_name) }}" alt="Image"
+            style="max-width: 100%; height: auto;">
+    </div>
+    <h2>Text</h2>
+    <div>
+        <p>{{ text }}</p>
+    </div>
+</body>
+
+</html>
