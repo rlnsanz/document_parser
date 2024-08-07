@@ -8,17 +8,22 @@ import warnings
 from . import config
 from .constants import DOC_DIR
 
+
 app = Flask(__name__)
+
+
 pdf_names = []
+image_names = []
 feat_names = [
     "txt-headings",
     "txt-page_numbers",
     "ocr-headings",
     "ocr-page_numbers",
-    "merge-source",
-    "merged-text",
+    "page-source",
+    "page-text",
 ]
-memoized_features = None
+memoized_pdfs = None
+memoized_images = None
 
 
 def get_colors():
@@ -35,38 +40,50 @@ def get_colors():
                 return (df[config.first_page].astype(int).cumsum() - 1).tolist()
 
 
-def get_coordinates():
-    # TODO: To be implemented
-    data = flor.dataframe("c_left", "c_top", "c_width", "c_height")
-    return jsonify(data)
-
-
 @app.route("/")
 def index():
-    global memoized_features, feat_names
-    if memoized_features is None:
-        memoized_features = flor.utils.latest(flor.dataframe(*feat_names))
+    global memoized_pdfs, feat_names, memoized_images
 
     pdf_files = [
-        os.path.splitext(f)[0] for f in os.listdir(PDF_DIR) if f.endswith(".pdf")
+        os.path.splitext(f)[0] for f in os.listdir(DOC_DIR) if f.endswith(".pdf")
     ]
-    by_page = [each.split("_to_") for each in pdf_files if "_to_" in each]
-    by_page = sorted([(n, int(p)) for n, p in by_page])
-    reservoir = sorted([each for each in pdf_files if "_to_" not in each])
-    pdf_files = [f"{n}_to_{p}" for n, p in by_page] + reservoir
 
-    # Resize each image and create a list of tuples (pdf, image_path)
-    pdf_previews = []
-    for doc_name in flor.loop("document", pdf_files):
-        image_name = doc_name + ".png"
-        image_path = os.path.join(IMGS_DIR, image_name)
-        if os.path.exists(image_path):
+    if pdf_files:
+        if memoized_pdfs is None:
+            memoized_pdfs = flor.utils.latest(flor.dataframe(*feat_names))
+
+        # Resize each image and create a list of tuples (pdf, image_path)
+        pdf_previews = []
+        for doc_name in flor.loop("document", pdf_files):
+            image_path = os.path.join(DOC_DIR, doc_name, "preview.png")
+            assert os.path.exists(image_path)
             # Only include the part of the image_path that comes after 'app/static/private/imgs'
             relative_image_path = os.path.relpath(image_path, start="app/static")
+            print("relative image path", relative_image_path)
             pdf_previews.append((doc_name + ".pdf", relative_image_path))
 
+    image_files = [
+        os.path.splitext(f)[0]
+        for f in os.listdir(DOC_DIR)
+        if f.endswith((".png", ".jpg", ".jpeg"))
+    ]
+
+    if image_files:
+        if memoized_images is None:
+            memoized_images = flor.utils.latest(flor.dataframe("image-text"))
+
+        # Resize each image and create a list of tuples (pdf, image_path)
+        image_previews = []
+        for image_name in flor.loop("image", image_files):
+            image_path = os.path.join(DOC_DIR, image_name, "preview.png")
+            assert os.path.exists(image_path)
+            # Only include the part of the image_path that comes after 'app/static/private/imgs'
+            relative_image_path = os.path.relpath(image_path, start="app/static")
+            print("relative image path", relative_image_path)
+            image_previews.append((image_name + ".pdf", relative_image_path))
+
     # Render the template with the PDF previews
-    return render_template("index.html", pdf_previews=pdf_previews)
+    return render_template("index.html", pdf_previews=(pdf_previews + image_previews))
 
 
 @app.route("/view-pdf")
@@ -115,9 +132,9 @@ def metadata_for_page(page_num: int):
     view_selection = 0
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        record = memoized_features[
-            memoized_features["document_value"] == os.path.splitext(pdf_names[-1])[0]
-        ][memoized_features["page"] == page_num + 1].to_dict(orient="records")[0]
+        record = memoized_pdfs[
+            memoized_pdfs["document_value"] == os.path.splitext(pdf_names[-1])[0]
+        ][memoized_pdfs["page"] == page_num + 1].to_dict(orient="records")[0]
     if view_selection == 0:
         if record["merge-source"] == "ocr":
             return jsonify([{f"ocr-page-{page_num+1}": record["merged-text"]}])
