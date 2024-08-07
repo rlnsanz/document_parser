@@ -40,37 +40,36 @@ featurize: process_pdfs process_images featurize.py
 	@python featurize.py
 	@touch featurize
 
-model.pth: export_ckpt.py
-	@echo "Generating model..."
-	@python export_ckpt.py
+# model.pth: export_ckpt.py
+# 	@echo "Generating model..."
+# 	@python export_ckpt.py
 
-infer: model.pth infer.py
-	@echo "Inferencing..."
-	@python infer.py
-	@touch infer
+# infer: model.pth infer.py
+# 	@echo "Inferencing..."
+# 	@python infer.py
+# 	@touch infer
 
-hand_label: label_by_hand.py featurize
+first_pages: label_by_hand.py featurize
 	@echo "Labeling by hand"
 	@python label_by_hand.py
-	@touch hand_label
+	@touch first_pages
 
-train: featurize hand_label train.py
-	@echo "Training..."
-	@python train.py
+# train: featurize first_pages train.py
+# 	@echo "Training..."
+# 	@python train.py
 
-apply_split: split.py clean
-	@echo "Applying split..."
-	@python split.py
+# apply_split: split.py clean
+# 	@echo "Applying split..."
+# 	@python split.py
 
 # Run the Flask development server
-run_infer: featurize infer
-	@echo "Starting Flask development server..."
-	# @flask run --port 5000
-	@python run.py
+# run_infer: featurize infer
+# 	@echo "Starting Flask development server..."
+# 	# @flask run --port 5000
+# 	@python run.py
 
-run_hand: hand_label
+run: first_pages run.py
 	@echo "Starting Flask development server..."
-	# @flask run --port 5000
 	@python run.py
 
 # Tesseract installation depending on the OS
@@ -99,7 +98,7 @@ clean:
 	@find . -type d -name '__pycache__' -delete
 	@rm -f infer
 	@rm -f process_pdfs
-	@rm -f hand_label
+	@rm -f first_pages
 	@rm -f featurize
 	@rm -f doc_links
 	@rm -f process_images
