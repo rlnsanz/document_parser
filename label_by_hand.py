@@ -1,14 +1,17 @@
 import os
-from app import IMGS_DIR, config
+from app import DOC_DIR, config
 import flor
 
-documents = sorted(
-    [
-        each
-        for each in os.listdir(IMGS_DIR)
-        if os.path.isdir(os.path.join(IMGS_DIR, each))
-    ]
-)
+
+documents = [
+    os.path.splitext(each)[0] for each in os.listdir(DOC_DIR) if each.endswith(".pdf")
+]
+for doc in documents:
+    # Assert doc is directory
+    assert os.path.isdir(
+        os.path.join(DOC_DIR, doc)
+    ), f"{doc} has not been parsed. Check your `make` call."
+
 
 # 0-indexed first pages of each document
 first_page = {
@@ -23,9 +26,9 @@ first_page = {
 
 if __name__ == "__main__":
     for doc in flor.loop("document", documents):
-        for i in flor.loop("page", range(len(os.listdir(os.path.join(IMGS_DIR, doc))))):
+        IMGS_DIR = os.path.join(DOC_DIR, doc, "images")
+        for i in flor.loop("page", range(len(os.listdir(IMGS_DIR)))):
             page_path = f"page_{i}.png"
-            flor.log(config.page_path, os.path.join(IMGS_DIR, doc, page_path))
             if doc in first_page:
                 flor.log(config.first_page, 1 if i in first_page[doc] else 0)
             else:
