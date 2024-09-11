@@ -66,12 +66,12 @@ def index():
         f for f in os.listdir(DOC_DIR) if f.endswith((".png", ".jpg", ".jpeg"))
     ]
 
+    image_previews = []
     if image_files:
         if memoized_images is None:
             memoized_images = flor.utils.latest(flor.dataframe("image-text"))
 
         # Resize each image and create a list of tuples (pdf, image_path)
-        image_previews = []
         for image_name in flor.loop("image", image_files):
             base, ext = os.path.splitext(image_name)
             image_path = os.path.join(DOC_DIR, base, "preview.png")
