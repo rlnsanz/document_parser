@@ -87,10 +87,22 @@ ifeq ($(UNAME_S),Windows_NT)
 endif
 
 # Install dependencies from requirements.txt
-install: install_tesseract requirements.txt
+install: install_tesseract requirements.txt 
 	@echo "Installing dependencies..."
 	@pip install -r requirements.txt
  
+# Create a virtual environment
+create_venv:
+	@if [ ! -d "venv" ]; then \
+		echo "Creating virtual environment..."; \
+		python3 -m venv venv; \
+	fi
+	@if ! grep -q "^venv$$" .gitignore; then \
+		echo "Adding 'venv' to .gitignore"; \
+		echo "venv" >> .gitignore; \
+	fi
+
+
 # Clean up pyc files and __pycache__ directories
 clean:
 	@echo "Cleaning up..."
