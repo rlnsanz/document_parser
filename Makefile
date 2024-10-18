@@ -41,21 +41,24 @@ install: install_tesseract .venv requirements.txt
 	@echo "Installing dependencies..."
 	$(VENV_PATH)/bin/pip install -r requirements.txt
 
-doc_links:
-	@if [ -L app/static/private ]; then \
-		echo "Softlink already exists."; \
-	else \
-		echo "Creating softlink to PDF directory..."; \
-		ln -sf $(realpath private) app/static/private; \
-	fi
-	@touch doc_links
+# TODO Add target for download
+# private: download.py
+# 	@echo "Downloading PDF files..."
+# 	$(PYTHON) download.py
 
-process_pdfs: doc_links pdf_demux.py 
+# download: private
+
+
+app/static/private:
+	@echo "Creating softlink to PDF directory..."
+	@ln -sf $(realpath private) app/static/private
+
+process_pdfs: app/static/private pdf_demux.py 
 	@echo "Processing PDF files..."
 	$(PYTHON) pdf_demux.py
 	@touch process_pdfs
 
-process_images: doc_links image_demux.py
+process_images: app/static/private image_demux.py
 	@echo "Processing Image files..."
 	$(PYTHON) image_demux.py
 	@touch process_images
