@@ -12,65 +12,15 @@
 export FLASK_APP=run.py
 export FLASK_ENV=developmentß
 
+# Absolute path to the virtual environment's Python interpreter
+VENV_PATH := $(abspath .venv)
+PYTHON := $(VENV_PATH)/bin/python
 UNAME_S := $(shell uname -s)
-GIT_COMMIT := $(shell git rev-parse HEAD | cut -c 1-6)
-PDFS := $(wildcard app/static/private/pdfs/*.pdf)
 
-doc_links:
-	@if [ -L app/static/private ]; then \
-		echo "Softlink already exists."; \
-	else \
-		echo "Creating softlink to PDF directory..."; \
-		ln -sf $(realpath private) app/static/private; \
-	fi
-	@touch doc_links
-
-process_pdfs: doc_links pdf_demux.py 
-	@echo "Processing PDF files..."
-	@python pdf_demux.py
-	@touch process_pdfs
-
-process_images: doc_links image_demux.py
-	@echo "Processing Image files..."
-	@python image_demux.py
-	@touch process_images
-
-featurize: process_pdfs process_images featurize.py
-	@echo "Featurizing Data..."
-	@python featurize.py
-	@touch featurize
-
-# model.pth: export_ckpt.py
-# 	@echo "Generating model..."
-# 	@python export_ckpt.py
-
-# infer: model.pth infer.py
-# 	@echo "Inferencing..."
-# 	@python infer.py
-# 	@touch infer
-
-first_pages: label_by_hand.py featurize
-	@echo "Labeling by hand"
-	@python label_by_hand.py
-	@touch first_pages
-
-# train: featurize first_pages train.py
-# 	@echo "Training..."
-# 	@python train.py
-
-# apply_split: split.py clean
-# 	@echo "Applying split..."
-# 	@python split.py
-
-# Run the Flask development server
-# run_infer: featurize infer
-# 	@echo "Starting Flask development server..."
-# 	# @flask run --port 5000
-# 	@python run.py
-
-run: first_pages run.py
-	@echo "Starting Flask development server..."
-	@python run.py
+# Create a virtual environment
+.venv:
+	@echo "Creating virtual environment..."
+	@python3 -m venv .venv
 
 # Tesseract installation depending on the OS
 install_tesseract:
@@ -87,20 +37,65 @@ ifeq ($(UNAME_S),Windows_NT)
 endif
 
 # Install dependencies from requirements.txt
-install: install_tesseract requirements.txt 
+install: install_tesseract .venv requirements.txt 
 	@echo "Installing dependencies..."
-	@pip install -r requirements.txt
- 
-# Create a virtual environment
-create_venv:
-	@if [ ! -d "venv" ]; then \
-		echo "Creating virtual environment..."; \
-		python3 -m venv venv; \
+	$(VENV_PATH)/bin/pip install -r requirements.txt
+
+doc_links:
+	@if [ -L app/static/private ]; then \
+		echo "Softlink already exists."; \
+	else \
+		echo "Creating softlink to PDF directory..."; \
+		ln -sf $(realpath private) app/static/private; \
 	fi
-	@if ! grep -q "^venv$$" .gitignore; then \
-		echo "Adding 'venv' to .gitignore"; \
-		echo "venv" >> .gitignore; \
-	fi
+	@touch doc_links
+
+process_pdfs: doc_links pdf_demux.py 
+	@echo "Processing PDF files..."
+	$(PYTHON) pdf_demux.py
+	@touch process_pdfs
+
+process_images: doc_links image_demux.py
+	@echo "Processing Image files..."
+	$(PYTHON) image_demux.py
+	@touch process_images
+
+featurize: process_pdfs process_images featurize.py
+	@echo "Featurizing Data..."
+	$(PYTHON) featurize.py
+	@touch featurize
+
+# model.pth: export_ckpt.py
+# 	@echo "Generating model..."
+# 	$(PYTHON) export_ckpt.py
+
+# infer: model.pth infer.py
+# 	@echo "Inferencing..."
+# 	$(PYTHON) infer.py
+# 	@touch infer
+
+first_pages: label_by_hand.py featurize
+	@echo "Labeling by hand"
+	$(PYTHON) label_by_hand.py
+	@touch first_pages
+
+# train: featurize first_pages train.py
+# 	@echo "Training..."
+# 	$(PYTHON) train.py
+
+# apply_split: split.py clean
+# 	@echo "Applying split..."
+# 	$(PYTHON) split.py
+
+# Run the Flask development server
+# run_infer: featurize infer
+# 	@echo "Starting Flask development server..."
+# 	# @flask run --port 5000
+# 	$(PYTHON) run.py
+
+run: first_pages run.py
+	@echo "Starting Flask development server..."
+	$(PYTHON) run.py
 
 
 # Clean up pyc files and __pycache__ directories
