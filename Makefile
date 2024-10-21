@@ -22,22 +22,8 @@ UNAME_S := $(shell uname -s)
 	@echo "Creating virtual environment..."
 	@python3 -m venv .venv
 
-# Tesseract installation depending on the OS
-install_tesseract:
-	@echo "Installing Tesseract OCR..."
-ifeq ($(UNAME_S),Linux)
-	sudo apt-get update
-	sudo apt-get install tesseract-ocr
-endif
-ifeq ($(UNAME_S),Darwin)
-	brew install tesseract
-endif
-ifeq ($(UNAME_S),Windows_NT)
-	@echo "Please install Tesseract OCR manually from https://github.com/UB-Mannheim/tesseract/wiki"
-endif
-
 # Install dependencies from requirements.txt
-install: install_tesseract .venv requirements.txt 
+install: .venv requirements.txt 
 	@echo "Installing dependencies..."
 	$(VENV_PATH)/bin/pip install -r requirements.txt
 
@@ -47,7 +33,6 @@ install: install_tesseract .venv requirements.txt
 # 	$(PYTHON) download.py
 
 # download: private
-
 
 app/static/private:
 	@echo "Creating softlink to PDF directory..."
@@ -63,10 +48,10 @@ process_images: app/static/private image_demux.py
 	$(PYTHON) image_demux.py
 	@touch process_images
 
-featurize: process_pdfs process_images featurize.py
-	@echo "Featurizing Data..."
-	$(PYTHON) featurize.py
-	@touch featurize
+# featurize: process_pdfs process_images featurize.py
+# 	@echo "Featurizing Data..."
+# 	$(PYTHON) featurize.py
+# 	@touch featurize
 
 # model.pth: export_ckpt.py
 # 	@echo "Generating model..."
@@ -96,9 +81,9 @@ first_pages: label_by_hand.py featurize
 # 	# @flask run --port 5000
 # 	$(PYTHON) run.py
 
-run: first_pages run.py
-	@echo "Starting Flask development server..."
-	$(PYTHON) run.py
+# run: first_pages run.py
+# 	@echo "Starting Flask development server..."
+# 	$(PYTHON) run.py
 
 
 # Clean up pyc files and __pycache__ directories
