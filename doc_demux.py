@@ -11,57 +11,81 @@ import numpy as np
 from doctr.io import DocumentFile
 from doctr.models import ocr_predictor
 
-model = ocr_predictor(
-    det_arch="linknet_resnet50", reco_arch="master", pretrained=True
-).to("cuda")
+
+def resize_image(image_path, max_size=(300, 300)):
+    # Open an image file
+    with Image.open(image_path) as img:
+        # Get original dimensions
+        original_width, original_height = img.size
+        aspect_ratio = original_width / original_height
+
+        # Calculate new dimensions
+        if aspect_ratio > 1:
+            # Landscape orientation
+            new_width = min(max_size[0], original_width)
+            new_height = int(new_width / aspect_ratio)
+        else:
+            # Portrait orientation or square
+            new_height = min(max_size[1], original_height)
+            new_width = int(new_height * aspect_ratio)
+
+        # Resize the image
+        return img.resize((new_width, new_height), Image.LANCZOS)
+
 
 IMG_EX_T = (".png", ".jpg", ".jpeg")
 
-pdf_files = [each for each in os.listdir(DOC_DIR) if each.endswith(".pdf")]
-image_files = [each for each in os.listdir(DOC_DIR) if each.endswith(IMG_EX_T)]
-for doc_file in flor.loop("document", pdf_files + image_files):
-    doc_path = os.path.join(DOC_DIR, doc_file)
-    base, ext = os.path.splitext(doc_path)
+if __name__ == "__main__":
 
-    if ext in IMG_EX_T:
-        img_path = doc_path
-        doctr_doc = DocumentFile.from_images(img_path)
-        result = model(doctr_doc)
-        flor.log("ocr_text", result.render())
-        continue
+    model = ocr_predictor(
+        det_arch="linknet_resnet50", reco_arch="master", pretrained=True
+    ).to("cuda")
 
-    pdf_path = doc_path
+    pdf_files = [each for each in os.listdir(DOC_DIR) if each.endswith(".pdf")]
+    image_files = [each for each in os.listdir(DOC_DIR) if each.endswith(IMG_EX_T)]
+    for doc_file in flor.loop("document", pdf_files + image_files):
+        doc_path = os.path.join(DOC_DIR, doc_file)
+        base, ext = os.path.splitext(doc_path)
 
-    # Create a directory for the document
-    images = os.path.join(base, "images")
-    os.makedirs(images, exist_ok=True)
+        if ext in IMG_EX_T:
+            img_path = doc_path
+            doctr_doc = DocumentFile.from_images(img_path)
+            result = model(doctr_doc)
+            flor.log("img_ocr", result.render())
+            continue
 
-    # Load the PDF
-    doc = fitz.open(pdf_path)
-    doctr_doc = DocumentFile.from_pdf(pdf_path)
-    for page_num in flor.loop("page", range(doc.page_count)):
-        page = doc.load_page(page_num)
-        # Extract text and save as TXT
-        flor.log("plain_text", page.get_text())
+        pdf_path = doc_path
 
-        # Save page PNG
-        pix = page.get_pixmap()
-        output_image = os.path.join(images, f"page_{page_num}.png")
-        pix.save(output_image)
+        # Create a directory for the document
+        images = os.path.join(base, "images")
+        os.makedirs(images, exist_ok=True)
 
-        img_bytes = io.BytesIO(pix.tobytes("png"))
-        img = Image.open(img_bytes)
+        # Load the PDF
+        doc = fitz.open(pdf_path)
+        doctr_doc = DocumentFile.from_pdf(pdf_path)
+        for page_num in flor.loop("page", range(doc.page_count)):
+            page = doc.load_page(page_num)
+            # Extract text and save as TXT
+            flor.log("page_text", page.get_text())
 
-        if page_num == 0:
-            # Save the first page as the preview
-            preview_path = os.path.join(base, "preview.png")
-            img = img.resize((300, 400), Image.LANCZOS)
-            img.save(preview_path)
+            # Save page PNG
+            pix = page.get_pixmap()
+            output_image = os.path.join(images, f"page_{page_num}.png")
+            pix.save(output_image)
 
-        # Extract text with doctr
-        result = model(doctr_doc[page_num : page_num + 1])
-        flor.log("ocr_text", result.render())
+            img_bytes = io.BytesIO(pix.tobytes("png"))
+            img = Image.open(img_bytes)
 
-    doc.close()
+            if page_num == 0:
+                # Save the first page as the preview
+                preview_path = os.path.join(base, "preview.png")
+                img = img.resize((300, 400), Image.LANCZOS)
+                img.save(preview_path)
 
-print("De-multiplexing Done!")
+            # Extract text with doctr
+            result = model(doctr_doc[page_num : page_num + 1])
+            flor.log("page_ocr", result.render())
+
+        doc.close()
+
+    print("De-multiplexing Done!")

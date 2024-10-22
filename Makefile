@@ -62,7 +62,7 @@ process_all: app/static/private doc_demux.py
 # 	$(PYTHON) infer.py
 # 	@touch infer
 
-first_pages: label_by_hand.py featurize
+first_pages: label_by_hand.py process_all
 	@echo "Labeling by hand"
 	$(PYTHON) label_by_hand.py
 	@touch first_pages
@@ -81,9 +81,9 @@ first_pages: label_by_hand.py featurize
 # 	# @flask run --port 5000
 # 	$(PYTHON) run.py
 
-# run: first_pages run.py
-# 	@echo "Starting Flask development server..."
-# 	$(PYTHON) run.py
+run: first_pages run.py
+	@echo "Starting Flask development server..."
+	$(PYTHON) run.py
 
 
 # Clean up pyc files and __pycache__ directories
