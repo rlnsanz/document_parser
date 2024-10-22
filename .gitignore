@@ -162,12 +162,11 @@ cython_debug/
 #.idea/
 .DS_Store
 last_inference
-process_pdfs
+process_all
 infer
 hand_label
 featurize
 doc_links
 app/static/private
-process_images
 first_pages
 venv

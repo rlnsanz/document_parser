@@ -38,17 +38,17 @@ app/static/private:
 	@echo "Creating softlink to PDF directory..."
 	@ln -sf $(realpath private) app/static/private
 
-process_pdfs: app/static/private pdf_demux.py 
+process_all: app/static/private doc_demux.py 
 	@echo "Processing PDF files..."
-	$(PYTHON) pdf_demux.py
-	@touch process_pdfs
+	$(PYTHON) doc_demux.py
+	@touch process_all
 
-process_images: app/static/private image_demux.py
-	@echo "Processing Image files..."
-	$(PYTHON) image_demux.py
-	@touch process_images
+# process_images: app/static/private image_demux.py
+# 	@echo "Processing Image files..."
+# 	$(PYTHON) image_demux.py
+# 	@touch process_images
 
-# featurize: process_pdfs process_images featurize.py
+# featurize: process_all process_images featurize.py
 # 	@echo "Featurizing Data..."
 # 	$(PYTHON) featurize.py
 # 	@touch featurize
@@ -92,9 +92,8 @@ clean:
 	@find . -type f -name '*.pyc' -delete
 	@find . -type d -name '__pycache__' -delete
 	@rm -f infer
-	@rm -f process_pdfs
+	@rm -f process_all
 	@rm -f first_pages
 	@rm -f featurize
 	@rm -f doc_links
-	@rm -f process_images
 
