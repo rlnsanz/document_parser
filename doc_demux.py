@@ -15,12 +15,28 @@ model = ocr_predictor(
     det_arch="linknet_resnet50", reco_arch="master", pretrained=True
 ).to("cuda")
 
+IMG_EX_T = (".png", ".jpg", ".jpeg")
+
 pdf_files = [each for each in os.listdir(DOC_DIR) if each.endswith(".pdf")]
-for pdf_file in flor.loop("document", pdf_files):
-    pdf_path = os.path.join(DOC_DIR, pdf_file)
-    base, ext = os.path.splitext(pdf_path)
-    img_path = os.path.join(base, "images")
-    os.makedirs(img_path, exist_ok=True)
+image_files = [each for each in os.listdir(DOC_DIR) if each.endswith(IMG_EX_T)]
+for doc_file in flor.loop("document", pdf_files + image_files):
+    doc_path = os.path.join(DOC_DIR, doc_file)
+    base, ext = os.path.splitext(doc_path)
+
+    if ext in IMG_EX_T:
+        img_path = doc_path
+        doctr_doc = DocumentFile.from_images(img_path)
+        result = model(doctr_doc)
+        flor.log("ocr_text", result.render())
+        continue
+
+    pdf_path = doc_path
+
+    # Create a directory for the document
+    images = os.path.join(base, "images")
+    os.makedirs(images, exist_ok=True)
+
+    # Load the PDF
     doc = fitz.open(pdf_path)
     doctr_doc = DocumentFile.from_pdf(pdf_path)
     for page_num in flor.loop("page", range(doc.page_count)):
@@ -28,8 +44,9 @@ for pdf_file in flor.loop("document", pdf_files):
         # Extract text and save as TXT
         flor.log("plain_text", page.get_text())
 
+        # Save page PNG
         pix = page.get_pixmap()
-        output_image = os.path.join(img_path, f"page_{page_num}.png")
+        output_image = os.path.join(images, f"page_{page_num}.png")
         pix.save(output_image)
 
         img_bytes = io.BytesIO(pix.tobytes("png"))
