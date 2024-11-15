@@ -6,4 +6,4 @@ pytesseract==0.3.10
 flordb>=3.4.1
 torch
 fuzzywuzzy
-python-doctr
+python-doctr[torch]
