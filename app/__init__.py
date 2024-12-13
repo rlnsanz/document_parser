@@ -26,9 +26,9 @@ def get_colors():
     # TODO: this method may also be called by apply_split
     df = flor.dataframe(config.first_page, config.page_color)
     if not df.empty:
-        df = df[df["document_value"] == os.path.splitext(pdf_names[-1])[0]]
+        df = df[df["document_value"] == pdf_names[-1]]
         if not df.empty:
-            if df[config.page_color].notna().any():
+            if df[config.page_color].astype(int).notna().any():
                 df = flor.utils.latest(df[df.page_color.notna()])
                 return df[config.page_color].astype(int).tolist()
             else:
@@ -130,7 +130,7 @@ def save_colors():
     # Process the colors here...
     pdf_name = pdf_names.pop()
     pdf_names.clear()
-    with flor.iteration("document", None, os.path.splitext(pdf_name)[0]):
+    with flor.iteration("document", None, pdf_name):
         for i in flor.loop("page", range(len(colors))):
             flor.log(config.page_color, colors[i])
     flor.commit()
