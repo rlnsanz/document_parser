@@ -48,7 +48,7 @@ process_all: app/static/private doc_demux.py
 # 	$(PYTHON) image_demux.py
 # 	@touch process_images
 
-# featurize: process_all process_images featurize.py
+# featurize: process_all featurize.py
 # 	@echo "Featurizing Data..."
 # 	$(PYTHON) featurize.py
 # 	@touch featurize

@@ -15,12 +15,8 @@ app = Flask(__name__)
 pdf_names = []
 image_names = []
 feat_names = [
-    "txt-headings",
-    "txt-page_numbers",
-    "ocr-headings",
-    "ocr-page_numbers",
-    "page-source",
-    "page-text",
+    "page_text",
+    "page_ocr",
 ]
 memoized_pdfs = None
 memoized_images = None
@@ -146,14 +142,14 @@ def metadata_for_page(page_num: int):
     view_selection = 0
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        record = memoized_pdfs[
-            memoized_pdfs["document_value"] == os.path.splitext(pdf_names[-1])[0]
-        ][memoized_pdfs["page"] == page_num + 1].to_dict(orient="records")[0]
+        record = memoized_pdfs[memoized_pdfs["document_value"] == pdf_names[-1]][
+            memoized_pdfs["page"] == page_num + 1
+        ].to_dict(orient="records")[0]
     if view_selection == 0:
-        if record["page-source"] == "ocr":
-            return jsonify([{f"ocr-page-{page_num+1}": record["page-text"]}])
+        if "page_ocr" in record:
+            return jsonify([{f"ocr-page-{page_num+1}": record["page_ocr"]}])
         else:
-            return jsonify([{f"txt-page-{page_num+1}": record["page-text"]}])
+            return jsonify([{f"txt-page-{page_num+1}": record["page_text"]}])
     elif view_selection == 1:
         # Retrieve metadata for the specified page number
         metadata: List[Dict[str, Any]] = [{"page_num": page_num + 1}]
