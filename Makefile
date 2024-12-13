@@ -43,48 +43,41 @@ process_all: app/static/private doc_demux.py
 	$(PYTHON) doc_demux.py
 	@touch process_all
 
-# process_images: app/static/private image_demux.py
-# 	@echo "Processing Image files..."
-# 	$(PYTHON) image_demux.py
-# 	@touch process_images
+process_images: app/static/private image_demux.py
+	@echo "Processing Image files..."
+	$(PYTHON) image_demux.py
+	@touch process_images
 
-# featurize: process_all featurize.py
-# 	@echo "Featurizing Data..."
-# 	$(PYTHON) featurize.py
-# 	@touch featurize
+featurize: process_all featurize.py
+	@echo "Featurizing Data..."
+	$(PYTHON) featurize.py
+	@touch featurize
 
-# model.pth: export_ckpt.py
-# 	@echo "Generating model..."
-# 	$(PYTHON) export_ckpt.py
+model.pth: export_ckpt.py
+	@echo "Generating model..."
+	$(PYTHON) export_ckpt.py
 
-# infer: model.pth infer.py
-# 	@echo "Inferencing..."
-# 	$(PYTHON) infer.py
-# 	@touch infer
+infer: model.pth infer.py
+	@echo "Inferencing..."
+	$(PYTHON) infer.py
+	@touch infer
 
 first_pages: label_by_hand.py process_all
 	@echo "Labeling by hand"
 	$(PYTHON) label_by_hand.py
 	@touch first_pages
 
-# train: featurize first_pages train.py
-# 	@echo "Training..."
-# 	$(PYTHON) train.py
+train: featurize first_pages train.py
+	@echo "Training..."
+	$(PYTHON) train.py
 
-# apply_split: split.py clean
-# 	@echo "Applying split..."
-# 	$(PYTHON) split.py
-
-# Run the Flask development server
-# run_infer: featurize infer
-# 	@echo "Starting Flask development server..."
-# 	# @flask run --port 5000
-# 	$(PYTHON) run.py
+apply_split: split.py clean
+	@echo "Applying split..."
+	$(PYTHON) split.py
 
 run: first_pages run.py
 	@echo "Starting Flask development server..."
 	$(PYTHON) run.py
-
 
 # Clean up pyc files and __pycache__ directories
 clean:

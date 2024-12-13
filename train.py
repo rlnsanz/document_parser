@@ -73,10 +73,7 @@ if __name__ == "__main__":
     model = model.to(device)
 
     # TODO: Infer first_page on each page, get ground trurh
-    training_data = flor.dataframe(config.page_path, config.first_page)
-    training_data[config.page_path] = training_data[config.page_path].apply(
-        os.path.relpath
-    )
+    training_data = flor.dataframe(config.page_color, config.first_page)
     training_data = flor.utils.latest(training_data)
 
     test_size = flor.arg("test_size", 0.2)
