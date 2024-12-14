@@ -140,13 +140,15 @@ def save_colors():
 @app.route("/metadata-for-page/<int:page_num>")
 def metadata_for_page(page_num: int):
     view_selection = 0
+    text_mode = flor.arg("text_mode", default="plain").strip().lower()
+    assert text_mode in ("ocr", "plain")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         record = memoized_pdfs[memoized_pdfs["document_value"] == pdf_names[-1]][
             memoized_pdfs["page"] == page_num + 1
         ].to_dict(orient="records")[0]
     if view_selection == 0:
-        if "page_ocr" in record:
+        if text_mode == "ocr":
             return jsonify([{f"ocr-page-{page_num+1}": record["page_ocr"]}])
         else:
             return jsonify([{f"txt-page-{page_num+1}": record["page_text"]}])
