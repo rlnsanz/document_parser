@@ -11,6 +11,7 @@ import flor
 import numpy as np
 from doctr.io import DocumentFile
 from doctr.models import ocr_predictor
+import torch
 
 
 def resize_image(image_path, max_size=(300, 300)):
