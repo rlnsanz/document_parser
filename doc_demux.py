@@ -1,6 +1,7 @@
 import fitz
 import os
 from PIL import Image
+import platform
 
 from app.constants import DOC_DIR
 import io
@@ -36,10 +37,15 @@ def resize_image(image_path, max_size=(300, 300)):
 IMG_EX_T = (".png", ".jpg", ".jpeg")
 
 if __name__ == "__main__":
+    # Determine the device based on the operating system
+    if platform.system() == "Darwin":
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+    else:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = ocr_predictor(
         det_arch="linknet_resnet50", reco_arch="master", pretrained=True
-    ).to("cuda")
+    ).to(device)
 
     pdf_files = [each for each in os.listdir(DOC_DIR) if each.endswith(".pdf")]
     image_files = [each for each in os.listdir(DOC_DIR) if each.endswith(IMG_EX_T)]
