@@ -77,7 +77,7 @@ apply_split: split.py clean
 
 run: first_pages run.py
 	@echo "Starting Flask development server..."
-	$(PYTHON) run.py --kwargs text_mode=plain
+	$(PYTHON) run.py --kwargs text_mode=ocr
 
 # Clean up pyc files and __pycache__ directories
 clean:
