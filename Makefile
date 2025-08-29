@@ -84,4 +84,5 @@ clean:
 	@rm -f process_all
 	@rm -f first_pages
 	@rm -f doc_links
+	@rm -rf private/*/
 
