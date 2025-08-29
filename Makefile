@@ -48,10 +48,6 @@ process_images: app/static/private image_demux.py
 	$(PYTHON) image_demux.py
 	@touch process_images
 
-featurize: process_all featurize.py
-	@echo "Featurizing Data..."
-	$(PYTHON) featurize.py
-	@touch featurize
 
 model.pth: export_ckpt.py
 	@echo "Generating model..."
@@ -62,12 +58,12 @@ infer: model.pth infer.py
 	$(PYTHON) infer.py
 	@touch infer
 
-first_pages: label_by_hand.py featurize
+first_pages: label_by_hand.py process_all
 	@echo "Labeling by hand"
 	$(PYTHON) label_by_hand.py
 	@touch first_pages
 
-train: featurize first_pages train.py
+train: first_pages train.py
 	@echo "Training..."
 	$(PYTHON) train.py
 
@@ -87,6 +83,5 @@ clean:
 	@rm -f infer
 	@rm -f process_all
 	@rm -f first_pages
-	@rm -f featurize
 	@rm -f doc_links
 
