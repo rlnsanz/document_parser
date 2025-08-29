@@ -62,7 +62,7 @@ infer: model.pth infer.py
 	$(PYTHON) infer.py
 	@touch infer
 
-first_pages: label_by_hand.py process_all
+first_pages: label_by_hand.py featurize
 	@echo "Labeling by hand"
 	$(PYTHON) label_by_hand.py
 	@touch first_pages
