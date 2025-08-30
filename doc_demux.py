@@ -50,6 +50,7 @@ if __name__ == "__main__":
 
     pdf_files = [each for each in os.listdir(DOC_DIR) if each.endswith(".pdf")]
     image_files = [each for each in os.listdir(DOC_DIR) if each.endswith(IMG_EX_T)]
+    skip_ocr = flor.arg("skip_ocr", True)
     for doc_file in flor.loop("document", pdf_files + image_files):
         doc_path = os.path.join(DOC_DIR, doc_file)
         base, ext = os.path.splitext(doc_path)
@@ -84,14 +85,25 @@ if __name__ == "__main__":
             img = Image.open(img_bytes)
 
             if page_num == 0:
-                # Save the first page as the preview
+                # Save the first page as the preview (preserve aspect ratio, no warp)
                 preview_path = os.path.join(base, "preview.png")
-                img = img.resize((300, 400), Image.LANCZOS)
-                img.save(preview_path)
+                max_w, max_h = 400, 400  # adjust as desired
+                w, h = img.size
+                scale = min(max_w / w, max_h / h)
+                new_w, new_h = int(w * scale), int(h * scale)
+                preview = img.resize((new_w, new_h), Image.LANCZOS)
+
+                # Optional: letterbox to consistent canvas size
+                canvas = Image.new("RGB", (max_w, max_h), (255, 255, 255))
+                offset = ((max_w - new_w) // 2, (max_h - new_h) // 2)
+                canvas.paste(preview, offset)
+                canvas.save(preview_path)
 
             # Extract text with doctr
-            result = model(doctr_doc[page_num : page_num + 1])
-            flor.log("page_ocr", result.render())
+            if not skip_ocr:
+                # TODO: needs MPS and GPU support
+                result = model(doctr_doc[page_num : page_num + 1])
+                flor.log("page_ocr", result.render())
 
         doc.close()
 
