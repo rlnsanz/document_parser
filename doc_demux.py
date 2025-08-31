@@ -1,14 +1,12 @@
+import platform
 import fitz
 import os
 from PIL import Image
-import platform
 
 from app.constants import DOC_DIR
 import io
-import time
 
 import flor
-import numpy as np
 from doctr.io import DocumentFile
 from doctr.models import ocr_predictor
 import torch
@@ -44,16 +42,21 @@ if __name__ == "__main__":
     else:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = ocr_predictor(
-        det_arch="linknet_resnet50", reco_arch="master", pretrained=True
-    ).to(device)
+    skip_ocr = flor.arg("skip_ocr", True)
+    if not skip_ocr:
+        model = ocr_predictor(
+            det_arch="linknet_resnet50", reco_arch="master", pretrained=True
+        ).to(device)
 
     pdf_files = [each for each in os.listdir(DOC_DIR) if each.endswith(".pdf")]
     image_files = [each for each in os.listdir(DOC_DIR) if each.endswith(IMG_EX_T)]
-    skip_ocr = flor.arg("skip_ocr", True)
     for doc_file in flor.loop("document", pdf_files + image_files):
         doc_path = os.path.join(DOC_DIR, doc_file)
         base, ext = os.path.splitext(doc_path)
+
+        if os.path.exists(base):
+            # Skip PDFs that were already demuxed
+            continue
 
         if ext in IMG_EX_T:
             img_path = doc_path

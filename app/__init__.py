@@ -30,12 +30,12 @@ def get_colors():
     if not df.empty:
         df = df[df["document_value"] == pdf_names[-1]]
         if not df.empty:
-            if df[config.page_color].astype(int).notna().any():
-                df = flor.utils.latest(df[df.page_color.notna()])
-                return df[config.page_color].astype(int).tolist()
-            else:
+            if df[config.page_color].isna().all():
                 df = flor.utils.latest(df)
                 return (df[config.first_page].astype(int).cumsum() - 1).tolist()
+            else:
+                df = flor.utils.latest(df[df.page_color.notna()])
+                return df[config.page_color].astype(int).tolist()
 
 
 @app.route("/")
