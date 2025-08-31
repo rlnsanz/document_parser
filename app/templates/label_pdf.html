@@ -59,161 +59,106 @@
 </head>
 
 <body>
-    <button id="save-close-btn">Save & Close</button> <!-- Added button -->
+    <button id="save-close-btn">Save & Close</button>
     <script type="module">
         import * as pdfjsLib from "{{ url_for('static', filename='js/pdf.mjs') }}";
 
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "{{ url_for('static', filename='js/pdf.worker.mjs') }}";
+
         const color_wheel = ['rgba(118, 42, 131, 0.2)', 'rgba(175, 141, 195, 0.2)', 'rgba(231, 212, 232, 0.2)', 'rgba(217, 240, 211, 0.2)', 'rgba(127, 191, 123, 0.2)', 'rgba(27, 120, 55, 0.2)'];
-        // Get the colors array from the server, handle None case
-        var colorIndices = eval("{{ colors | tojson | safe }}");
-        console.log(colorIndices);
 
+        // Was: const colorIndices = JSON.parse('{{ colors | tojson | safe }}');
+        // colors may be null => JSON.parse('null') => null. Use value directly and fallback.
+        const _colorIndices = JSON.parse('{{ colors | tojson | safe }}');
+        const colorIndices = Array.isArray(_colorIndices) ? _colorIndices : [];
 
-        // Function to get the color for a given page
         function getColorForPage(pageIndex) {
-            if (!colorIndices || colorIndices.length === 0) {
-                // Handle the case where colors are None or empty
-                return color_wheel[0]; // Define a default color
-            }
-            return color_wheel[colorIndices[pageIndex]];
+            if (!Array.isArray(colorIndices) || !colorIndices.length) return color_wheel[0];
+            const idx = colorIndices[pageIndex] ?? 0;
+            return color_wheel[idx % color_wheel.length];
         }
 
-        // Add event listener to button
-        document.getElementById('save-close-btn').addEventListener('click', function () {
-            // Get all the overlays
+        document.getElementById('save-close-btn').addEventListener('click', () => {
             const overlays = document.getElementsByClassName('page-overlay');
-            // Create an array to store the colors
-            const colors = [];
-            // Loop through the overlays
-            for (let i = 0; i < overlays.length; i++) {
-                // Get the color of the overlay
-                const color = overlays[i].style.backgroundColor;
-                // Add the color to the array
-                if (color) {
-                    colors.push(color_wheel.indexOf(color));
-                } else {
-                    colors.push(0);
-                }
-            }
-            // Send the colors to the server
+            const colors = Array.from(overlays).map(ov => {
+                const idx = color_wheel.indexOf(ov.style.backgroundColor);
+                return idx >= 0 ? idx : 0;
+            });
             fetch('/save_colors', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    colors: colors
-                })
-            })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log(data);
-                    // Redirect to the home page
-                    window.close();
-                })
-                .catch(error => console.error('Error:', error));
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ colors })
+            }).then(r => r.ok && r.json())
+              .then(() => window.close())
+              .catch(e => console.error('Error saving colors:', e));
         });
+
+        async function fetchPageMetadata(pageNum) {
+            try {
+                const r = await fetch("/metadata-for-page/" + pageNum);
+                if (!r.ok) throw new Error(r.status);
+                return await r.json();
+            } catch (e) {
+                console.error("Metadata fetch failed:", e);
+                return [];
+            }
+        }
 
         async function loadPdf() {
             const url = "{{ url_for('static', filename='private/' + pdf_name) }}";
-            const loadingTask = pdfjsLib.getDocument(url);
+            const pdf = await pdfjsLib.getDocument(url).promise;
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const baseViewport = page.getViewport({ scale: 1 });
+                const targetWidth = Math.min(window.innerWidth * 0.7, 900);
+                const scale = targetWidth / baseViewport.width;
+                const viewport = page.getViewport({ scale });
 
-            try {
-                const pdf = await loadingTask.promise;
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                await page.render({ canvasContext: ctx, viewport }).promise;
 
-                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                    const page = await pdf.getPage(pageNum);
+                const overlay = document.createElement('div');
+                overlay.className = 'page-overlay';
+                overlay.style.width = `${viewport.width}px`;
+                overlay.style.height = `${viewport.height}px`;
+                overlay.style.backgroundColor = getColorForPage(pageNum - 1);
+                let i = (colorIndices[pageNum - 1] ?? 0) % color_wheel.length;
+                overlay.onclick = () => {
+                    i = (i + 1) % color_wheel.length;
+                    overlay.style.backgroundColor = color_wheel[i];
+                };
 
-                    // Dynamic scale instead of fixed 1.5
-                    const baseViewport = page.getViewport({ scale: 1 });
-                    const targetWidth = Math.min(window.innerWidth * 0.7, 900); // adjust as desired
-                    const scale = targetWidth / baseViewport.width;
+                const pdfWrapper = document.createElement('div');
+                pdfWrapper.className = 'pdf-container';
+                pdfWrapper.appendChild(canvas);
+                pdfWrapper.appendChild(overlay);
 
-                    const viewport = page.getViewport({ scale });
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
-                    canvas.height = viewport.height;
-                    canvas.width = viewport.width;
+                const metadata = await fetchPageMetadata(pageNum - 1);
+                const metadataWrapper = document.createElement('div');
+                metadataWrapper.className = 'metadata';
+                metadataWrapper.id = 'metadata-page-' + (pageNum - 1);
+                metadata.forEach(item => {
+                    Object.keys(item).forEach(k => {
+                        const p = document.createElement('p');
+                        p.innerHTML = '<strong>' + k + '</strong>: ' + item[k];
+                        metadataWrapper.appendChild(p);
+                    });
+                });
 
-                    const renderContext = {
-                        canvasContext: context,
-                        viewport: viewport
-                    };
-                    await page.render(renderContext).promise;
+                const container = document.createElement('div');
+                container.className = 'content';
+                container.style.maxHeight = `${viewport.height}px`;
+                container.appendChild(pdfWrapper);
+                container.appendChild(metadataWrapper);
 
-                    const overlay = document.createElement('div');
-                    overlay.className = 'page-overlay';
-                    overlay.style.height = `${viewport.height}px`;
-                    overlay.style.width = `${viewport.width}px`;
-                    overlay.style.backgroundColor = getColorForPage(pageNum - 1);
-                    overlay.onclick = (function () {
-                        // get the value from colorIndices if not null
-                        // var i = colorIndices ? colorIndices[pageNum - 1] + 1 : 1;
-                        var i = (colorIndices && colorIndices.length > 0) ? colorIndices[pageNum - 1] + 1 : 1;
-                        return function () {
-                            overlay.style.backgroundColor = color_wheel[i % color_wheel.length];
-                            i++;
-                        };
-                    })();
-
-                    const pdfWrapper = document.createElement('div');
-                    pdfWrapper.className = 'pdf-container';
-                    pdfWrapper.appendChild(canvas);
-                    pdfWrapper.appendChild(overlay);
-
-                    // Fetch and display metadata for the current page
-                    const metadata = await fetchPageMetadata(pageNum - 1); // Implement this function
-
-                    // Create a new element for the metadata and append it to the data-container
-                    const metadataWrapper = document.createElement('div');
-                    metadataWrapper.className = 'metadata';
-                    metadataWrapper.id = 'metadata-page-' + (pageNum - 1);
-                    for (const item of metadata) {
-                        for (const key in item) {
-                            if (item.hasOwnProperty(key)) {
-                                const data = document.createElement('p');
-                                data.innerHTML = '<strong>' + key + '</strong>: ' + item[key];
-                                metadataWrapper.appendChild(data);
-                            }
-                        }
-                    }
-
-                    const container = document.createElement('div');
-                    container.className = 'content';
-                    container.style.maxHeight = `${viewport.height}px`;
-                    container.appendChild(pdfWrapper);
-                    container.appendChild(metadataWrapper);
-
-                    document.body.appendChild(container);
-                }
-            } catch (e) {
-                console.error('Error loading PDF:', e);
+                document.body.appendChild(container);
             }
         }
 
-        // Implement the fetchPageMetadata function to retrieve metadata
-        async function fetchPageMetadata(pageNum) {
-            try {
-                const response = await fetch(`/metadata-for-page/${pageNum}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const metadata = await response.json(); // Assuming metadata is JSON
-                return metadata // Or process as needed based on your metadata structure
-            } catch (error) {
-                console.error('Fetching page metadata failed:', error);
-            }
-        }
-
-        // Set the workerSrc property
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "{{ url_for('static', filename='js/pdf.worker.mjs') }}";
-
-        document.addEventListener('DOMContentLoaded', loadPdf);
+        loadPdf();
     </script>
 </body>
 

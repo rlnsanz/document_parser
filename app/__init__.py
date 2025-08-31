@@ -4,6 +4,7 @@ from werkzeug.utils import secure_filename
 import os
 import flor
 import warnings
+import mimetypes
 
 from . import config
 from .constants import DOC_DIR
@@ -11,6 +12,7 @@ from .constants import DOC_DIR
 
 app = Flask(__name__)
 
+mimetypes.add_type("text/javascript", ".mjs")
 
 pdf_names = []
 image_names = []
