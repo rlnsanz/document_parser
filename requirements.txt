@@ -7,3 +7,4 @@ flordb>=3.4.6
 torch
 fuzzywuzzy
 python-doctr[torch]
+spacy
