@@ -24,6 +24,9 @@ memoized_pdfs = None
 memoized_images = None
 
 
+text_mode = flor.arg("text_mode", "plain")
+
+
 def get_colors():
     # TODO: this method may also be called by apply_split
     df = flor.dataframe(config.first_page, config.page_color)
@@ -32,11 +35,11 @@ def get_colors():
         if not df.empty:
             if df[config.page_color].isna().all():
                 df = flor.utils.latest(df)
-                df.sort_values(by=["tstamp", "page"])
+                df = df.sort_values(by=["tstamp", "page"])
                 return (df[config.first_page].astype(int).cumsum() - 1).tolist()
             else:
                 df = flor.utils.latest(df[df.page_color.notna()])
-                df.sort_values(by=["tstamp", "page"])
+                df = df.sort_values(by=["tstamp", "page"])
                 return df[config.page_color].astype(int).tolist()
 
 
@@ -50,7 +53,7 @@ def index():
 
     if pdf_files:
         if memoized_pdfs is None:
-            memoized_pdfs = flor.utils.latest(flor.dataframe(*feat_names))
+            memoized_pdfs = flor.dataframe(*feat_names)
 
         # Resize each image and create a list of tuples (pdf, image_path)
         pdf_previews = []
@@ -129,6 +132,7 @@ def view_image():
 
 @app.route("/save_colors", methods=["POST"])
 def save_colors():
+    global memoized_pdfs
     j = request.get_json()
     colors = j.get("colors", [])
     pages = j.get("metadata", [])
@@ -143,47 +147,32 @@ def save_colors():
                 config.page_text, pages[i].get("data", {}).get(f"txt-page-{i+1}", "")
             )
     flor.commit()
+    memoized_pdfs = None
     return jsonify({"message": "Colors and Text saved successfully."}), 200
 
 
 @app.route("/metadata-for-page/<int:page_num>")
 def metadata_for_page(page_num: int):
-    global memoized_pdfs
-    if page_num == 0:
-        # refresh
-        memoized_pdfs = flor.utils.latest(flor.dataframe(*feat_names))
-    view_selection = 0
-    text_mode = flor.arg("text_mode", default="plain").strip().lower()
+    # if page_num == 0:
+    #     # refresh
+    #     memoized_pdfs = flor.utils.latest(flor.dataframe(*feat_names))
+    assert memoized_pdfs is not None
     assert text_mode in ("ocr", "plain")
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        record = memoized_pdfs[memoized_pdfs["document_value"] == pdf_names[-1]][
-            memoized_pdfs["page"] == page_num + 1
-        ].to_dict(orient="records")[0]
-    if view_selection == 0:
-        if text_mode == "ocr":
-            return jsonify([{f"ocr-page-{page_num+1}": record["page_ocr"]}])
-        else:
-            return jsonify([{f"txt-page-{page_num+1}": record["page_text"]}])
-    elif view_selection == 1:
-        # Retrieve metadata for the specified page number
-        metadata: List[Dict[str, Any]] = [{"page_num": page_num + 1}]
-        # Identify the PDF that we're working with
-        for k in record:
-            if k in feat_names:
-                try:
-                    obj = eval(record[k])
-                    if isinstance(obj, list):
-                        obj = [str(each).strip() for each in obj]
-                        metadata.append({k: obj})
-                    else:
-                        print("unknown type", k, ":", type(obj))
-                except:
-                    metadata.append({k: str(record[k])})
-        # Retrieve metadata for the specified page number
-        return jsonify(metadata)
+
+    record = flor.utils.latest(
+        memoized_pdfs[
+            (memoized_pdfs["document_value"] == pdf_names[-1])
+            & (memoized_pdfs["page"] == page_num + 1)
+        ]
+    )
+    if record.empty:
+        warnings.warn(f"No record found for page {page_num} of {pdf_names[-1]}")
+        return jsonify([{f"txt-page-{page_num+1}": ""}])
+
+    if text_mode == "ocr":
+        return jsonify([{f"ocr-page-{page_num+1}": record["page_ocr"].values[0]}])
     else:
-        pass
+        return jsonify([{f"txt-page-{page_num+1}": record["page_text"].values[0]}])
 
 
 if __name__ == "__main__":
