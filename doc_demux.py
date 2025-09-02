@@ -4,6 +4,7 @@ import os
 from PIL import Image
 
 from app.constants import DOC_DIR
+from app import config
 import io
 
 import flor
@@ -77,7 +78,7 @@ if __name__ == "__main__":
         for page_num in flor.loop("page", range(doc.page_count)):
             page = doc.load_page(page_num)
             # Extract text and save as TXT
-            flor.log("page_text", page.get_text())
+            flor.log(config.page_text, page.get_text())
 
             # Save page PNG
             pix = page.get_pixmap()

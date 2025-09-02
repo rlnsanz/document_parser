@@ -17,7 +17,7 @@ mimetypes.add_type("text/javascript", ".mjs")
 pdf_names = []
 image_names = []
 feat_names = [
-    "page_text",
+    config.page_text,
     "page_ocr",
 ]
 memoized_pdfs = None
@@ -32,9 +32,11 @@ def get_colors():
         if not df.empty:
             if df[config.page_color].isna().all():
                 df = flor.utils.latest(df)
+                df.sort_values(by=["tstamp", "page"])
                 return (df[config.first_page].astype(int).cumsum() - 1).tolist()
             else:
                 df = flor.utils.latest(df[df.page_color.notna()])
+                df.sort_values(by=["tstamp", "page"])
                 return df[config.page_color].astype(int).tolist()
 
 
@@ -129,18 +131,27 @@ def view_image():
 def save_colors():
     j = request.get_json()
     colors = j.get("colors", [])
+    pages = j.get("metadata", [])
     # Process the colors here...
     pdf_name = pdf_names.pop()
     pdf_names.clear()
     with flor.iteration("document", None, pdf_name):
         for i in flor.loop("page", range(len(colors))):
             flor.log(config.page_color, colors[i])
+            # Use empty string if page text key is missing
+            flor.log(
+                config.page_text, pages[i].get("data", {}).get(f"txt-page-{i+1}", "")
+            )
     flor.commit()
-    return jsonify({"message": "Colors saved successfully"}), 200
+    return jsonify({"message": "Colors and Text saved successfully."}), 200
 
 
 @app.route("/metadata-for-page/<int:page_num>")
 def metadata_for_page(page_num: int):
+    global memoized_pdfs
+    if page_num == 0:
+        # refresh
+        memoized_pdfs = flor.utils.latest(flor.dataframe(*feat_names))
     view_selection = 0
     text_mode = flor.arg("text_mode", default="plain").strip().lower()
     assert text_mode in ("ocr", "plain")

@@ -21,6 +21,7 @@ page_path = "page_path"
 
 # WebApp schema
 page_color = "page_color"
+page_text = "page_text"
 
 
-__all__ = ["device", "first_page", "page_path", "page_color"]
+__all__ = ["device", "first_page", "page_path", "page_color", "page_text"]
