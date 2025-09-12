@@ -1,3 +1,9 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import app.config as config
+
 import torch
 import torch.nn as nn
 from torch.utils import data as torchdata
@@ -12,9 +18,7 @@ import evaluate
 import flor
 
 # Device configuration
-device = torch.device(
-    flor.arg("device", "cuda" if torch.cuda.is_available() else "cpu")
-)
+device = torch.device(flor.arg("device", config.device))
 
 # Hyper-parameters
 num_epochs = flor.arg("epochs", default=5)

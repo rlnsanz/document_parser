@@ -1,4 +1,4 @@
-.PHONY: run install clean apply_split train install_tesseract
+.PHONY: run install clean apply_split install_tesseract all
 
 												 
 #  _____ __    _____ _____ _____ __    _____ _____ 
@@ -16,6 +16,8 @@ export FLASK_ENV=developmentß
 VENV_PATH := $(abspath .venv)
 PYTHON := $(VENV_PATH)/bin/python
 UNAME_S := $(shell uname -s)
+
+all: run
 
 # Create a virtual environment
 .venv:
@@ -63,8 +65,14 @@ first_pages: label_by_hand.py process_all
 	$(PYTHON) label_by_hand.py
 	@touch first_pages
 
-train: first_pages train.py
-	@echo "Training..."
+.PHONY: train_llmv3
+train_llmv3: train/layoutlmv3.py
+	@echo "Training LayoutLMV3..."
+	$(PYTHON) train/layoutlmv3.py
+
+.PHONY: train_fp
+train_fp: first_pages train/first_page_clf.py
+	@echo "Training First Page Classifier..."
 	$(PYTHON) train/first_page_clf.py
 
 apply_split: split.py clean

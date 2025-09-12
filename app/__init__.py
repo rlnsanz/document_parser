@@ -24,9 +24,6 @@ memoized_pdfs = None
 memoized_images = None
 
 
-text_mode = flor.arg("text_mode", "plain")
-
-
 def get_colors():
     # TODO: this method may also be called by apply_split
     df = flor.dataframe(config.first_page, config.page_color)
@@ -176,4 +173,5 @@ def metadata_for_page(page_num: int):
 
 
 if __name__ == "__main__":
+    text_mode = flor.arg("text_mode", "plain")
     app.run(debug=True)
