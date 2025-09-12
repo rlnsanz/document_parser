@@ -65,7 +65,7 @@ first_pages: label_by_hand.py process_all
 
 train: first_pages train.py
 	@echo "Training..."
-	$(PYTHON) train.py
+	$(PYTHON) train/first_page_clf.py
 
 apply_split: split.py clean
 	@echo "Applying split..."

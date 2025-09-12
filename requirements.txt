@@ -3,7 +3,7 @@ Pillow
 pdf2image
 PyMuPDF
 pytesseract
-flordb>=3.4.7
+flordb>=3.4.8
 torch
 fuzzywuzzy
 python-doctr[torch]
