@@ -8,3 +8,8 @@ torch
 fuzzywuzzy
 python-doctr[torch]
 spacy
+numpy
+seqeval
+transformers[torch]
+datasets
+evaluate
