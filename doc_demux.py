@@ -7,7 +7,7 @@ from app.constants import DOC_DIR
 from app import config
 import io
 
-import flor
+import flordb as flor
 from doctr.io import DocumentFile
 from doctr.models import ocr_predictor
 import torch

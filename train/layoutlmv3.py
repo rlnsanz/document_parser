@@ -2,7 +2,6 @@ import sys
 import os
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import app.config as config
 
@@ -17,7 +16,7 @@ from datasets.features import ClassLabel
 from datasets import Features, Sequence, ClassLabel, Value, Array2D, Array3D
 import evaluate
 
-import flor
+import flordb as flor
 
 # Device configuration
 device = torch.device(flor.arg("device", config.device))

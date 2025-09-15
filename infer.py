@@ -1,6 +1,6 @@
 import os
 from app import IMGS_DIR
-import flor
+import flordb as flor
 import torch
 from PIL import Image
 

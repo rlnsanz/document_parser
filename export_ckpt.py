@@ -1,4 +1,4 @@
-import flor
+import flordb as flor
 import app.config as config
 
 exp_history = flor.dataframe(config.val_acc, config.val_loss, config.val_recall)

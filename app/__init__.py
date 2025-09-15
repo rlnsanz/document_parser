@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 import os
-import flor
+import flordb as flor
 import warnings
 import mimetypes
 

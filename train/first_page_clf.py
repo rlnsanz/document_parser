@@ -1,5 +1,5 @@
 import os
-import flor
+import flordb as flor
 import torch
 import torch.optim as optim
 from torch.optim import lr_scheduler

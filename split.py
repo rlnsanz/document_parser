@@ -1,4 +1,4 @@
-import flor
+import flordb as flor
 import fitz
 import os
 
