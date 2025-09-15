@@ -1,6 +1,8 @@
 import sys
 import os
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import app.config as config
 
@@ -176,11 +178,7 @@ with flor.checkpointing(model=model, optimizer=optimizer):
             loss.backward()
             optimizer.step()
 
-            print(
-                "Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}".format(
-                    epoch + 1, num_epochs, i, total_step, flor.log("loss", loss.item())
-                )
-            )
+            flor.log("loss", loss.item())
 
         # Validate the model
         print("Model VALIDATE")
