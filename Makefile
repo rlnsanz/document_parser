@@ -55,11 +55,6 @@ model.pth: export_ckpt.py
 	@echo "Generating model..."
 	$(PYTHON) export_ckpt.py
 
-infer: model.pth infer.py
-	@echo "Inferencing..."
-	$(PYTHON) infer.py
-	@touch infer
-
 first_pages: label_by_hand.py process_all
 	@echo "Labeling by hand"
 	$(PYTHON) label_by_hand.py
@@ -88,7 +83,6 @@ clean:
 	@echo "Cleaning up..."
 	@find . -type f -name '*.pyc' -delete
 	@find . -type d -name '__pycache__' -delete
-	@rm -f infer
 	@rm -f process_all
 	@rm -f first_pages
 	@rm -f doc_links

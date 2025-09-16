@@ -163,7 +163,6 @@ cython_debug/
 .DS_Store
 last_inference
 process_all
-infer
 hand_label
 featurize
 doc_links
