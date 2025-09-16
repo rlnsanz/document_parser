@@ -184,7 +184,7 @@ with flor.checkpointing(model=model, optimizer=optimizer):
             flor.log("loss", loss.item())
 
         # Validate the model
-        print("Model VALIDATE")
+        print("\nModel VALIDATE")
         model.eval()
         with torch.no_grad():
             preds = []
@@ -209,7 +209,7 @@ with flor.checkpointing(model=model, optimizer=optimizer):
 
 # Test the model
 # In test phase, we don't need to compute gradients (for memory efficiency)
-print("Model TEST")
+print("\nModel TEST")
 model.eval()
 with torch.no_grad():
     preds = []
@@ -227,5 +227,3 @@ with torch.no_grad():
     p = np.concatenate(preds)
     l = np.concatenate(labels)
     result = compute_metrics((p, l))
-
-    print(result)

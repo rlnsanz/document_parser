@@ -7,30 +7,34 @@ import pytesseract
 from transformers import AutoProcessor, LayoutLMv3ForTokenClassification
 import json
 
-# save as: infer_layoutlmv3.py
-# Requirements:
-#   pip install "transformers>=4.38" torch torchvision pillow pytesseract matplotlib
-# Usage:
-#   python infer_layoutlmv3.py --checkpoint /path/to/checkpoint --image /path/to/image.png --output out.png
-
+import flordb as flor
 
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+
+import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import config as config
+
+import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def load_model(
     checkpoint: str,
     device: torch.device,
     base_model: str = "microsoft/layoutlmv3-base",
-    labels_path: str = None,
+    labels: str = None,
 ):
-    def _load_label_map(labels_path: str, num_labels_fallback: int = 2):
-        if not labels_path or not os.path.exists(labels_path):
+    def _load_label_map(labels, num_labels_fallback: int = 2):
+        if not labels:
             id2label = {i: f"LABEL_{i}" for i in range(num_labels_fallback)}
             label2id = {v: k for k, v in id2label.items()}
             return id2label, label2id
-        with open(labels_path, "r") as f:
-            data = json.load(f)
+        else:
+            data = labels
         # Support a list ["O","B-FOO",...] or dict {"O":0,...} or {"0":"O",...}
         if isinstance(data, list):
             id2label = {i: lbl for i, lbl in enumerate(data)}
@@ -97,7 +101,7 @@ def load_model(
     state_dict = _strip_prefix(state_dict, "model.")
 
     num_labels = _infer_num_labels(state_dict, default=2)
-    id2label, label2id = _load_label_map(labels_path, num_labels)
+    id2label, label2id = _load_label_map(labels, num_labels)
 
     # Processor from base model/repo
     processor = AutoProcessor.from_pretrained(base_model, apply_ocr=False)
@@ -251,8 +255,8 @@ def draw_boxes(
     label_ids: List[int],
     confidences: List[float],
     id2label: Dict[int, str],
+    output_path: str,
     conf_threshold: float = 0.0,
-    output_path: str = None,
 ):
     w, h = image.size
     colors = label_colors(id2label)
@@ -286,83 +290,81 @@ def draw_boxes(
         )
     plt.tight_layout()
     if output_path:
-        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         plt.savefig(output_path, dpi=200, bbox_inches="tight")
         plt.close(fig)
     else:
         plt.show()
 
 
-def run(
-    checkpoint: str,
-    image_path: str,
-    output: str = None,
-    conf_threshold: float = 0.0,
-    base_model: str = "microsoft/layoutlmv3-base",
-    labels_path: str = None,
-):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    processor, model, id2label, _ = load_model(
-        checkpoint, device, base_model=base_model, labels_path=labels_path
-    )
-    image = Image.open(image_path).convert("RGB")
-    words, boxes = ocr_words_and_boxes(image)
-    if not words:
-        raise RuntimeError("No words detected by OCR.")
-    label_ids, confidences = predict_word_labels(
-        processor, model, image, words, boxes, device
-    )
-    draw_boxes(
-        image, words, boxes, label_ids, confidences, id2label, conf_threshold, output
-    )
-
-
 def main():
-    parser = argparse.ArgumentParser(
-        description="LayoutLMv3 inference and bounding box visualization."
+    df = flor.dataframe("accuracy")
+    if df.empty:
+        raise RuntimeError("No accuracy data found. Please run training first.")
+
+    df = flor.utils.latest(df[df["filename"] == "layoutlmv3.py"])
+    if df.empty:
+        raise RuntimeError(
+            "No accuracy data found for layoutlmv3.py. Please run training first."
+        )
+
+    max_row = df.loc[df["accuracy"].idxmax()]
+    max_tstamp = str(max_row["tstamp"]).replace(" ", "T")
+    check_point = os.path.join(
+        os.path.expanduser("~/.flor"),
+        "obj_store",
+        str(max_row["projid"]),
+        max_tstamp,
+        f"model_epoch_{int(max_row['epoch_value'])}.pth",
     )
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        required=True,
-        help="Path to HF model directory or raw PyTorch checkpoint (.pth/.pt).",
+    print("Using checkpoint:", check_point)
+
+    base_model = flor.arg("base_model", "microsoft/layoutlmv3-base")
+
+    labels = flor.utils.latest(flor.dataframe("labels_layoutlmv3"))
+    assert not labels.empty, "No labels found. Please run training first."
+    labels = eval(labels.iloc[0]["labels_layoutlmv3"])
+    print("Using labels:", labels)
+
+    device = torch.device(flor.arg("device", config.device))
+    processor, model, id2label, _ = load_model(
+        check_point, device, base_model=base_model, labels=labels
     )
-    parser.add_argument(
-        "--base-model",
-        type=str,
-        default="microsoft/layoutlmv3-base",
-        help="HF base model/repo or directory to provide config/processor when loading a raw checkpoint.",
-    )
-    parser.add_argument(
-        "--labels",
-        type=str,
-        default=None,
-        help="Optional path to labels JSON (list or mapping).",
-    )
-    parser.add_argument(
-        "--image", type=str, required=True, help="Path to input document image"
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=None,
-        help="Path to save visualization (e.g., out.png). If not set, shows window.",
-    )
-    parser.add_argument(
-        "--conf-threshold",
-        type=float,
-        default=0.0,
-        help="Confidence threshold to display labels",
-    )
-    args = parser.parse_args()
-    run(
-        args.checkpoint,
-        args.image,
-        args.output,
-        args.conf_threshold,
-        args.base_model,
-        args.labels,
-    )
+
+    documents = [
+        each
+        for each in os.listdir("private")
+        if os.path.isdir(os.path.join("private", each))
+    ]
+
+    for doc in documents:
+        pred_dir = os.path.join("private", doc, "layoutlmv3")
+        os.makedirs(pred_dir, exist_ok=True)
+        pages = sorted(
+            [
+                f
+                for f in os.listdir(os.path.join("private", doc, "images"))
+                if f.lower().endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp"))
+            ],
+            key=lambda x: int(x.split("_")[1].split(".")[0]),
+        )
+        for page in pages:
+            image_path = os.path.join("private", doc, "images", page)
+            output_path = os.path.join("private", doc, "layoutlmv3", page)
+            print(f"Processing {image_path}")
+            image = Image.open(image_path).convert("RGB")
+            words, boxes = ocr_words_and_boxes(image)
+            label_ids, confidences = predict_word_labels(
+                processor, model, image, words, boxes, device
+            )
+            draw_boxes(
+                image,
+                words,
+                boxes,
+                label_ids,
+                confidences,
+                id2label,
+                output_path,
+            )
 
 
 if __name__ == "__main__":
