@@ -5,6 +5,7 @@ PyMuPDF
 pytesseract
 flordb>=3.4.9
 torch
+torchvision
 fuzzywuzzy
 python-doctr[torch]
 spacy
@@ -13,3 +14,4 @@ seqeval
 transformers[torch]
 datasets
 evaluate
+matplotlib

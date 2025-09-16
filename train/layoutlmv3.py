@@ -63,6 +63,10 @@ else:
     label2id = {v: k for k, v in enumerate(label_list)}
 num_labels = len(label_list)
 
+df = flor.dataframe("labels_layoutlmv3")
+if df.empty:
+    flor.log("labels_layoutlmv3", label_list)
+
 processor = AutoProcessor.from_pretrained("microsoft/layoutlmv3-base", apply_ocr=False)
 model = LayoutLMv3ForTokenClassification.from_pretrained(
     "microsoft/layoutlmv3-base", id2label=id2label, label2id=label2id

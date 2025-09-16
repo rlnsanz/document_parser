@@ -1,0 +1,369 @@
+import argparse
+import os
+from typing import List, Tuple, Dict
+import torch
+from PIL import Image
+import pytesseract
+from transformers import AutoProcessor, LayoutLMv3ForTokenClassification
+import json
+
+# save as: infer_layoutlmv3.py
+# Requirements:
+#   pip install "transformers>=4.38" torch torchvision pillow pytesseract matplotlib
+# Usage:
+#   python infer_layoutlmv3.py --checkpoint /path/to/checkpoint --image /path/to/image.png --output out.png
+
+
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+
+
+def load_model(
+    checkpoint: str,
+    device: torch.device,
+    base_model: str = "microsoft/layoutlmv3-base",
+    labels_path: str = None,
+):
+    def _load_label_map(labels_path: str, num_labels_fallback: int = 2):
+        if not labels_path or not os.path.exists(labels_path):
+            id2label = {i: f"LABEL_{i}" for i in range(num_labels_fallback)}
+            label2id = {v: k for k, v in id2label.items()}
+            return id2label, label2id
+        with open(labels_path, "r") as f:
+            data = json.load(f)
+        # Support a list ["O","B-FOO",...] or dict {"O":0,...} or {"0":"O",...}
+        if isinstance(data, list):
+            id2label = {i: lbl for i, lbl in enumerate(data)}
+            label2id = {lbl: i for i, lbl in enumerate(data)}
+        elif all(isinstance(k, str) and k.isdigit() for k in data.keys()):
+            id2label = {int(k): v for k, v in data.items()}
+            label2id = {v: k for k, v in id2label.items()}
+        else:
+            label2id = {k: int(v) for k, v in data.items()}
+            id2label = {v: k for k, v in label2id.items()}
+        return id2label, label2id
+
+    def _infer_num_labels(state_dict: Dict[str, torch.Tensor], default: int = 2) -> int:
+        for key in (
+            "classifier.weight",
+            "model.classifier.weight",
+            "layoutlmv3.classifier.weight",
+        ):
+            if key in state_dict:
+                return int(state_dict[key].shape[0])
+        for key in (
+            "classifier.bias",
+            "model.classifier.bias",
+            "layoutlmv3.classifier.bias",
+        ):
+            if key in state_dict:
+                return int(state_dict[key].shape[0])
+        return default
+
+    def _strip_prefix(
+        d: Dict[str, torch.Tensor], prefix: str
+    ) -> Dict[str, torch.Tensor]:
+        return {
+            (k[len(prefix) :] if k.startswith(prefix) else k): v for k, v in d.items()
+        }
+
+    if os.path.isdir(checkpoint):
+        # HF directory: load normally
+        processor = AutoProcessor.from_pretrained(base_model, apply_ocr=False)
+        model = LayoutLMv3ForTokenClassification.from_pretrained(checkpoint)
+        model.to(device).eval()
+        id2label = model.config.id2label
+        label2id = model.config.label2id
+        return processor, model, id2label, label2id
+
+    # Raw PyTorch checkpoint file
+    ckpt = torch.load(os.path.expanduser(checkpoint), map_location="cpu")
+    # Unwrap common containers
+    if (
+        isinstance(ckpt, dict)
+        and "state_dict" in ckpt
+        and isinstance(ckpt["state_dict"], dict)
+    ):
+        state_dict = ckpt["state_dict"]
+    elif isinstance(ckpt, dict):
+        state_dict = ckpt
+    else:
+        raise ValueError(
+            "Unsupported checkpoint format; expected a state_dict or dict with 'state_dict'."
+        )
+
+    # Clean common prefixes
+    state_dict = _strip_prefix(state_dict, "module.")
+    state_dict = _strip_prefix(state_dict, "model.")
+
+    num_labels = _infer_num_labels(state_dict, default=2)
+    id2label, label2id = _load_label_map(labels_path, num_labels)
+
+    # Processor from base model/repo
+    processor = AutoProcessor.from_pretrained(base_model, apply_ocr=False)
+
+    # Instantiate base model with correct label space, then load weights
+    model = LayoutLMv3ForTokenClassification.from_pretrained(
+        base_model,
+        num_labels=len(id2label),
+        id2label=id2label,
+        label2id=label2id,
+        ignore_mismatched_sizes=True,  # helpful if head dims differ
+    )
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    if missing:
+        print(
+            f"Warning: {len(missing)} missing keys when loading checkpoint (e.g., {missing[:3]})"
+        )
+    if unexpected:
+        print(
+            f"Warning: {len(unexpected)} unexpected keys in checkpoint (e.g., {unexpected[:3]})"
+        )
+
+    model.to(device).eval()
+    return processor, model, id2label, label2id
+
+
+def _normalize_box(
+    box: Tuple[int, int, int, int], width: int, height: int
+) -> List[int]:
+    # Convert pixel bbox to 0-1000 LayoutLM coordinates
+    x0, y0, x1, y1 = box
+    x0 = max(0, min(x0, width))
+    x1 = max(0, min(x1, width))
+    y0 = max(0, min(y0, height))
+    y1 = max(0, min(y1, height))
+    return [
+        int(1000 * x0 / width) if width > 0 else 0,
+        int(1000 * y0 / height) if height > 0 else 0,
+        int(1000 * x1 / width) if width > 0 else 0,
+        int(1000 * y1 / height) if height > 0 else 0,
+    ]
+
+
+def ocr_words_and_boxes(image: Image.Image) -> Tuple[List[str], List[List[int]]]:
+    if pytesseract is None:
+        raise RuntimeError(
+            "pytesseract is not installed. Please install it to run OCR."
+        )
+    w, h = image.size
+    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    words: List[str] = []
+    boxes: List[List[int]] = []
+    n = len(data["text"])
+    for i in range(n):
+        text = data["text"][i]
+        conf = data.get("conf", ["-1"] * n)[i]
+        try:
+            conf_val = float(conf)
+        except Exception:
+            conf_val = -1.0
+        if text is None or text.strip() == "" or conf_val < 0:
+            continue
+        x, y, bw, bh = (
+            data["left"][i],
+            data["top"][i],
+            data["width"][i],
+            data["height"][i],
+        )
+        x0, y0, x1, y1 = x, y, x + bw, y + bh
+        words.append(text.strip())
+        boxes.append(_normalize_box((x0, y0, x1, y1), w, h))
+    return words, boxes
+
+
+def to_device(batch, device):
+    for k, v in batch.items():
+        if isinstance(v, torch.Tensor):
+            batch[k] = v.to(device)
+    return batch
+
+
+def predict_word_labels(
+    processor,
+    model,
+    image: Image.Image,
+    words: List[str],
+    boxes: List[List[int]],
+    device: torch.device,
+):
+    encoding = processor(
+        image,
+        words,
+        boxes=boxes,
+        truncation=True,
+        return_tensors="pt",
+        padding="max_length",
+        max_length=512,
+    )
+    # forward
+    with torch.no_grad():
+        outputs = model(**to_device(encoding, device))
+        logits = outputs.logits[0]  # (seq_len, num_labels)
+    # Map sub-token predictions back to word-level
+    word_ids = encoding.word_ids(batch_index=0)
+    # Aggregate logits per word_id
+    sums: Dict[int, torch.Tensor] = {}
+    counts: Dict[int, int] = {}
+    for idx, wid in enumerate(word_ids):
+        if wid is None:
+            continue
+        if wid not in sums:
+            sums[wid] = logits[idx].detach().cpu()
+            counts[wid] = 1
+        else:
+            sums[wid] += logits[idx].detach().cpu()
+            counts[wid] += 1
+    word_label_ids: List[int] = []
+    word_confidences: List[float] = []
+    num_labels = logits.shape[-1]
+    for wid in range(len(words)):
+        if wid in sums:
+            avg_logits = sums[wid] / max(1, counts[wid])
+        else:
+            avg_logits = torch.zeros(num_labels)
+        probs = F.softmax(avg_logits, dim=-1)
+        label_id = int(torch.argmax(probs).item())
+        conf = float(torch.max(probs).item())
+        word_label_ids.append(label_id)
+        word_confidences.append(conf)
+    return word_label_ids, word_confidences
+
+
+def label_colors(id2label: Dict[int, str]):
+    labels = [id2label[i] for i in sorted(id2label)]
+    cmap = plt.get_cmap("tab20")
+    color_map: Dict[str, Tuple[float, float, float, float]] = {}
+    j = 0
+    for lbl in labels:
+        if lbl.upper() == "O":
+            color_map[lbl] = (0.2, 0.2, 0.2, 0.8)
+        else:
+            color_map[lbl] = cmap(j % 20)
+            j += 1
+    return color_map
+
+
+def draw_boxes(
+    image: Image.Image,
+    words: List[str],
+    boxes: List[List[int]],
+    label_ids: List[int],
+    confidences: List[float],
+    id2label: Dict[int, str],
+    conf_threshold: float = 0.0,
+    output_path: str = None,
+):
+    w, h = image.size
+    colors = label_colors(id2label)
+    fig, ax = plt.subplots(1, 1, figsize=(min(16, w / 60 + 2), min(16, h / 60 + 2)))
+    ax.imshow(image)
+    ax.axis("off")
+    for word, box, lid, conf in zip(words, boxes, label_ids, confidences):
+        label = id2label.get(int(lid), str(lid))
+        if conf < conf_threshold:
+            continue
+        x0 = int(box[0] * w / 1000.0)
+        y0 = int(box[1] * h / 1000.0)
+        x1 = int(box[2] * w / 1000.0)
+        y1 = int(box[3] * h / 1000.0)
+        rect_w = max(1, x1 - x0)
+        rect_h = max(1, y1 - y0)
+        color = colors.get(label, (1.0, 0.0, 0.0, 0.9))
+        ax.add_patch(
+            plt.Rectangle(
+                (x0, y0), rect_w, rect_h, fill=False, edgecolor=color, linewidth=1.5
+            )
+        )
+        text = f"{label} ({conf:.2f})"
+        ax.text(
+            x0,
+            max(0, y0 - 2),
+            text,
+            fontsize=8,
+            color="white",
+            bbox=dict(facecolor=color, alpha=0.6, pad=1, edgecolor="none"),
+        )
+    plt.tight_layout()
+    if output_path:
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+        plt.savefig(output_path, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def run(
+    checkpoint: str,
+    image_path: str,
+    output: str = None,
+    conf_threshold: float = 0.0,
+    base_model: str = "microsoft/layoutlmv3-base",
+    labels_path: str = None,
+):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    processor, model, id2label, _ = load_model(
+        checkpoint, device, base_model=base_model, labels_path=labels_path
+    )
+    image = Image.open(image_path).convert("RGB")
+    words, boxes = ocr_words_and_boxes(image)
+    if not words:
+        raise RuntimeError("No words detected by OCR.")
+    label_ids, confidences = predict_word_labels(
+        processor, model, image, words, boxes, device
+    )
+    draw_boxes(
+        image, words, boxes, label_ids, confidences, id2label, conf_threshold, output
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="LayoutLMv3 inference and bounding box visualization."
+    )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        required=True,
+        help="Path to HF model directory or raw PyTorch checkpoint (.pth/.pt).",
+    )
+    parser.add_argument(
+        "--base-model",
+        type=str,
+        default="microsoft/layoutlmv3-base",
+        help="HF base model/repo or directory to provide config/processor when loading a raw checkpoint.",
+    )
+    parser.add_argument(
+        "--labels",
+        type=str,
+        default=None,
+        help="Optional path to labels JSON (list or mapping).",
+    )
+    parser.add_argument(
+        "--image", type=str, required=True, help="Path to input document image"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Path to save visualization (e.g., out.png). If not set, shows window.",
+    )
+    parser.add_argument(
+        "--conf-threshold",
+        type=float,
+        default=0.0,
+        help="Confidence threshold to display labels",
+    )
+    args = parser.parse_args()
+    run(
+        args.checkpoint,
+        args.image,
+        args.output,
+        args.conf_threshold,
+        args.base_model,
+        args.labels,
+    )
+
+
+if __name__ == "__main__":
+    main()
