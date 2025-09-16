@@ -3,7 +3,7 @@ import fitz
 import os
 
 from app.constants import PDF_DIR, IMGS_DIR, OCR_DIR
-from app import config
+import config
 
 from tqdm import tqdm
 

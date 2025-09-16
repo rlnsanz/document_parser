@@ -1,6 +1,8 @@
 import os
-from app import DOC_DIR, config
+from app import DOC_DIR
 import flordb as flor
+
+import config
 
 
 documents = [each for each in os.listdir(DOC_DIR) if each.endswith(".pdf")]

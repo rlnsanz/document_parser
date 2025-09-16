@@ -4,7 +4,7 @@ import os
 from PIL import Image
 
 from app.constants import DOC_DIR
-from app import config
+import config
 import io
 
 import flordb as flor

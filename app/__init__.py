@@ -5,11 +5,15 @@ import os
 import flordb as flor
 import warnings
 import mimetypes
+import sys
 
-from . import config
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import config
+
 from .constants import DOC_DIR
 
-
+text_mode = flor.arg("text_mode", "plain")
 app = Flask(__name__)
 
 mimetypes.add_type("text/javascript", ".mjs")
@@ -173,5 +177,4 @@ def metadata_for_page(page_num: int):
 
 
 if __name__ == "__main__":
-    text_mode = flor.arg("text_mode", "plain")
     app.run(debug=True)
