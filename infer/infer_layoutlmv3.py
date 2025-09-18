@@ -1,5 +1,7 @@
 import argparse
 import os
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from typing import List, Tuple, Dict
 import torch
 from PIL import Image
