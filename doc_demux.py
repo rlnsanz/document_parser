@@ -43,7 +43,7 @@ if __name__ == "__main__":
     else:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    skip_ocr = flor.arg("skip_ocr", False)
+    skip_ocr = flor.arg("skip_ocr", True)
     if not skip_ocr:
         model = ocr_predictor(
             det_arch="linknet_resnet50", reco_arch="master", pretrained=True
