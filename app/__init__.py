@@ -141,9 +141,18 @@ def save_colors():
         for i in flor.loop("page", range(len(colors))):
             flor.log(config.page_color, colors[i])
             # Use empty string if page text key is missing
-            flor.log(
-                config.page_text, pages[i].get("data", {}).get(f"txt-page-{i+1}", "")
-            )
+            # Handle cases where 'data' or the specific text key might be missing
+            # check if txt-page-{i+1} exists or ocr-page-{i+1}
+            if f"txt-page-{i+1}" not in pages[i].get("data", {}):
+                flor.log(
+                    config.page_text,
+                    pages[i].get("data", {}).get(f"ocr-page-{i+1}", ""),
+                )
+            else:
+                flor.log(
+                    config.page_text,
+                    pages[i].get("data", {}).get(f"txt-page-{i+1}", ""),
+                )
     flor.commit()
     memoized_pdfs = None
     return jsonify({"message": "Colors and Text saved successfully."}), 200
