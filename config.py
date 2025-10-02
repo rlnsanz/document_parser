@@ -7,6 +7,8 @@ elif torch.cuda.is_available():
 else:
     device = "cpu"
 
+skip_ocr = "skip_ocr"
+
 # train.py schema
 train_loss = "train_loss"
 train_acc = "train_acc"
@@ -24,4 +26,4 @@ page_color = "page_color"
 page_text = "page_text"
 
 
-__all__ = ["device", "first_page", "page_path", "page_color", "page_text"]
+__all__ = ["skip_ocr", "device", "first_page", "page_path", "page_color", "page_text"]

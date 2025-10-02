@@ -13,17 +13,13 @@ import config
 
 from .constants import DOC_DIR
 
-text_mode = flor.arg("text_mode", "plain")
 app = Flask(__name__)
 
 mimetypes.add_type("text/javascript", ".mjs")
 
 pdf_names = []
 image_names = []
-feat_names = [
-    config.page_text,
-    "page_ocr",
-]
+feat_names = [config.skip_ocr, config.page_text]
 memoized_pdfs = None
 memoized_images = None
 
@@ -158,7 +154,6 @@ def metadata_for_page(page_num: int):
     #     # refresh
     #     memoized_pdfs = flor.utils.latest(flor.dataframe(*feat_names))
     assert memoized_pdfs is not None
-    assert text_mode in ("ocr", "plain")
 
     record = flor.utils.latest(
         memoized_pdfs[
@@ -170,10 +165,13 @@ def metadata_for_page(page_num: int):
         warnings.warn(f"No record found for page {page_num} of {pdf_names[-1]}")
         return jsonify([{f"txt-page-{page_num+1}": ""}])
 
-    if text_mode == "ocr":
-        return jsonify([{f"ocr-page-{page_num+1}": record["page_ocr"].values[0]}])
+    skip_ocr = record[config.skip_ocr].values[0]
+    print("skip ocr::", skip_ocr, type(skip_ocr))
+
+    if skip_ocr == True or skip_ocr.lower() == "true":
+        return jsonify([{f"txt-page-{page_num+1}": record[config.page_text].values[0]}])
     else:
-        return jsonify([{f"txt-page-{page_num+1}": record["page_text"].values[0]}])
+        return jsonify([{f"ocr-page-{page_num+1}": record[config.page_text].values[0]}])
 
 
 if __name__ == "__main__":

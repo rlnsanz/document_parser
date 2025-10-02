@@ -43,7 +43,7 @@ if __name__ == "__main__":
     else:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    skip_ocr = flor.arg("skip_ocr", True)
+    skip_ocr = flor.arg("skip_ocr", False)
     if not skip_ocr:
         model = ocr_predictor(
             det_arch="linknet_resnet50", reco_arch="master", pretrained=True
@@ -78,7 +78,8 @@ if __name__ == "__main__":
         for page_num in flor.loop("page", range(doc.page_count)):
             page = doc.load_page(page_num)
             # Extract text and save as TXT
-            flor.log(config.page_text, page.get_text())
+            if skip_ocr:
+                flor.log(config.page_text, page.get_text())
 
             # Save page PNG
             pix = page.get_pixmap()
@@ -107,7 +108,7 @@ if __name__ == "__main__":
             if not skip_ocr:
                 # TODO: needs MPS and GPU support
                 result = model(doctr_doc[page_num : page_num + 1])
-                flor.log("page_ocr", result.render())
+                flor.log(config.page_text, result.render())
 
         doc.close()
 
