@@ -5,6 +5,7 @@ import os
 import flordb as flor
 import warnings
 import mimetypes
+import math
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -168,7 +169,11 @@ def metadata_for_page(page_num: int):
     skip_ocr = record[config.skip_ocr].values[0]
     print("skip ocr::", skip_ocr, type(skip_ocr))
 
-    if skip_ocr == True or skip_ocr.lower() == "true":
+    if (
+        skip_ocr == True
+        or (isinstance(skip_ocr, str) and skip_ocr.lower() == "true")
+        or (isinstance(skip_ocr, float) and math.isnan(skip_ocr))
+    ):
         return jsonify([{f"txt-page-{page_num+1}": record[config.page_text].values[0]}])
     else:
         return jsonify([{f"ocr-page-{page_num+1}": record[config.page_text].values[0]}])
