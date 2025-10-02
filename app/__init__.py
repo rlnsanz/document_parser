@@ -176,7 +176,6 @@ def metadata_for_page(page_num: int):
         return jsonify([{f"txt-page-{page_num+1}": ""}])
 
     skip_ocr = record[config.skip_ocr].values[0]
-    print("skip ocr::", skip_ocr, type(skip_ocr))
 
     if (
         skip_ocr == True
