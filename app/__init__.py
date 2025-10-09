@@ -7,6 +7,7 @@ import warnings
 import mimetypes
 import math
 import sys
+import re
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -182,9 +183,126 @@ def metadata_for_page(page_num: int):
         or (isinstance(skip_ocr, str) and skip_ocr.lower() == "true")
         or (isinstance(skip_ocr, float) and math.isnan(skip_ocr))
     ):
-        return jsonify([{f"txt-page-{page_num+1}": record[config.page_text].values[0]}])
+        return jsonify(
+            [
+                {
+                    f"txt-page-{page_num+1}": reflow_ocr_text_conservative(
+                        record[config.page_text].values[0]
+                    )
+                }
+            ]
+        )
     else:
         return jsonify([{f"ocr-page-{page_num+1}": record[config.page_text].values[0]}])
+
+
+def reflow_ocr_text_conservative(text: str) -> str:
+    """
+    Reflow OCR text conservatively:
+      - Preserve blank-line paragraph breaks
+      - Treat ALL-CAPS lines (2+ words) as headings on their own lines
+      - Keep bullets on separate lines (•, ·, ●, -, *)
+      - Join other line wraps; fix hyphenated joins and common OCR spaces
+    """
+    # Normalize newlines
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+    def is_all_caps_heading(s: str) -> bool:
+        s = s.strip()
+        if len(s) < 4:
+            return False
+        # Only letters, digits, spaces, and simple punct allowed
+        if not re.fullmatch(r"[A-Z0-9 ,.'\"&:-]+", s):
+            return False
+        words = [w for w in s.split() if re.search(r"[A-Z0-9]", w)]
+        return len(words) >= 2 and all(w.upper() == w for w in words)
+
+    def is_bullet_start(s: str) -> bool:
+        return bool(re.match(r"\s*(?:[•·●]|[-*])\s*$", s)) or bool(
+            re.match(r"\s*(?:[•·●]|[-*])\s+\S", s)
+        )
+
+    paras = []
+    buf = []  # current paragraph word buffer
+    in_list = False  # whether we're currently building a bullet list
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # Paragraph break
+        if line == "":
+            if buf:
+                paras.append(" ".join(buf).strip())
+                buf = []
+            in_list = False
+            i += 1
+            continue
+
+        # ALL-CAPS heading on its own paragraph
+        if is_all_caps_heading(line):
+            if buf:
+                paras.append(" ".join(buf).strip())
+                buf = []
+            paras.append(line)  # keep as-is
+            in_list = False
+            i += 1
+            continue
+
+        # Bullets (allow cases where bullet symbol is on its own line)
+        if is_bullet_start(line):
+            if buf:
+                paras.append(" ".join(buf).strip())
+                buf = []
+            # Normalize to "- "
+            if re.match(r"\s*(?:[•·●]|[-*])\s*$", line) and i + 1 < len(lines):
+                # bullet mark alone on a line; consume next content line(s)
+                j = i + 1
+                # accumulate until next blank/heading/bullet
+                item_parts = []
+                while j < len(lines):
+                    nxt = lines[j].strip()
+                    if nxt == "" or is_all_caps_heading(nxt) or is_bullet_start(nxt):
+                        break
+                    item_parts.append(nxt)
+                    j += 1
+                paras.append("- " + " ".join(item_parts).strip())
+                i = j
+                in_list = True
+                continue
+            else:
+                # bullet with inline text
+                # normalize bullet prefix to "- "
+                line = re.sub(r"^\s*(?:[•·●]|[-*])\s*", "- ", line)
+                paras.append(line)
+                in_list = True
+                i += 1
+                continue
+
+        # Normal text: join with previous (handle hyphenation)
+        if buf:
+            if buf[-1].endswith("-"):
+                buf[-1] = buf[-1][:-1]  # remove hyphen, no space
+                buf.append(line)
+            else:
+                buf.append(line)
+        else:
+            buf.append(line)
+        i += 1
+
+    if buf:
+        paras.append(" ".join(buf).strip())
+
+    # Post-clean: collapse spaces, fix punctuation spacing, common OCR artifacts
+    out = "\n\n".join(paras)
+    out = re.sub(r"[ \t]+", " ", out)
+    out = re.sub(r"\s+([,.;:!?])", r"\1", out)
+    out = re.sub(r"\bU\.\s*S\.", "U.S.", out)
+    out = re.sub(r"\bi\s+n\b", "in", out)  # "i n" -> "in"
+    out = re.sub(r"(\w)-\s+(\w)", r"\1\2", out)  # leftover hyphen-wraps
+    out = re.sub(r"\s{3,}", " ", out).strip()
+
+    return out
 
 
 if __name__ == "__main__":
