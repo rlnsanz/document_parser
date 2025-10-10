@@ -214,6 +214,18 @@ def metadata_for_page(page_num: int):
         return jsonify([{f"ocr-page-{page_num+1}": record[config.page_text].values[0]}])
 
 
+COMMON_SUBS = {
+    r"\b([A-Z])\.\s*([A-Z])\.\b": r"\1.\2.",  # handles U. S., E. U., etc.
+}
+SPACED_WORD = re.compile(r"\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b")
+
+
+def _wide_clean(text: str) -> str:
+    for pattern, repl in COMMON_SUBS.items():
+        text = re.sub(pattern, repl, text)
+    return SPACED_WORD.sub(lambda m: m.group(0).replace(" ", ""), text)
+
+
 def reflow_ocr_text_conservative(text: str) -> str:
     """
     Reflow OCR text conservatively:
@@ -315,13 +327,14 @@ def reflow_ocr_text_conservative(text: str) -> str:
     out = "\n\n".join(paras)
     out = re.sub(r"[ \t]+", " ", out)
     out = re.sub(r"\s+([,.;:!?])", r"\1", out)
-    out = re.sub(r"\bU\.\s*S\.", "U.S.", out)
-    out = re.sub(r"\bi\s+n\b", "in", out)  # "i n" -> "in"
+    # out = re.sub(r"\bU\.\s*S\.", "U.S.", out)
+    # out = re.sub(r"\bi\s+n\b", "in", out)  # "i n" -> "in"
     out = re.sub(r"(\w)-\s+(\w)", r"\1\2", out)  # leftover hyphen-wraps
     out = re.sub(
         r"\b(?:[a-z]\s+){1,}[a-z]\b", lambda m: m.group(0).replace(" ", ""), out
     )
     out = re.sub(r"\s{3,}", " ", out).strip()
+    out = _wide_clean(out)
 
     return out
 
