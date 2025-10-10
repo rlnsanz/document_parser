@@ -62,6 +62,13 @@
             window.open(url, '_blank');
         }
     </script>
+    <script>
+      window.addEventListener("message", (event) => {
+        if (event.origin === window.location.origin && event.data === "refresh-index") {
+          window.location.reload();
+        }
+      });
+    </script>
 </body>
 
 </html>

@@ -1,6 +1,7 @@
 from typing import Any, Dict, List
 from flask import Flask, render_template, request, jsonify
-from werkzeug.utils import secure_filename
+from werkzeug.utils import safe_join, secure_filename
+from werkzeug.exceptions import NotFound
 import os
 import flordb as flor
 import warnings
@@ -42,13 +43,25 @@ def get_colors():
                 return df[config.page_color].astype(int).tolist()
 
 
+_natural_splitter = re.compile(r"(\d+)")
+
+
+def _natural_key(value: str):
+    return [
+        int(part) if part.isdigit() else part.lower()
+        for part in _natural_splitter.split(value)
+        if part
+    ]
+
+
 @app.route("/")
 def index():
     global memoized_pdfs, feat_names, memoized_images
 
-    pdf_files = [
-        os.path.splitext(f)[0] for f in os.listdir(DOC_DIR) if f.endswith(".pdf")
-    ]
+    pdf_files = sorted(
+        [os.path.splitext(f)[0] for f in os.listdir(DOC_DIR) if f.endswith(".pdf")],
+        key=_natural_key,
+    )
 
     if pdf_files:
         if memoized_pdfs is None:
@@ -64,9 +77,10 @@ def index():
             print("relative image path", relative_image_path)
             pdf_previews.append((doc_name + ".pdf", relative_image_path))
 
-    image_files = [
-        f for f in os.listdir(DOC_DIR) if f.endswith((".png", ".jpg", ".jpeg"))
-    ]
+    image_files = sorted(
+        [f for f in os.listdir(DOC_DIR) if f.endswith((".png", ".jpg", ".jpeg"))],
+        key=_natural_key,
+    )
 
     image_previews = []
     if image_files:
@@ -91,20 +105,21 @@ def index():
 
 @app.route("/view-pdf")
 def view_pdf():
-    # TODO: Display the PNG not the PDF. Easier overlay.
     pdf_name = request.args.get("name")
     if not pdf_name:
         return "No file specified.", 400
 
-    pdf_name = secure_filename(pdf_name)
-    pdf_names.append(pdf_name)
-
-    pdf_path = os.path.join(DOC_DIR, pdf_name)
-
-    if os.path.isfile(pdf_path):
-        return render_template("label_pdf.html", pdf_name=pdf_name, colors=get_colors())
-    else:
+    pdf_name = os.path.basename(pdf_name)
+    try:
+        pdf_path = safe_join(DOC_DIR, pdf_name)
+    except NotFound:
         return "File not found.", 404
+
+    if not os.path.isfile(pdf_path):
+        return "File not found.", 404
+
+    pdf_names.append(pdf_name)
+    return render_template("label_pdf.html", pdf_name=pdf_name, colors=get_colors())
 
 
 @app.route("/view-image")
@@ -113,6 +128,7 @@ def view_image():
     if not image_name:
         return "No file specified.", 400
 
+    image_name = os.path.basename(image_name)
     if not memoized_images.empty:
         text = memoized_images["image-text"][
             memoized_images["image_value"] == image_name
@@ -120,13 +136,15 @@ def view_image():
     else:
         text = ""
 
-    image_name = secure_filename(image_name)
-    image_names.append(image_name)
-
-    image_path = os.path.join(DOC_DIR, image_name)
+    try:
+        image_path = safe_join(DOC_DIR, image_name)
+    except NotFound:
+        return "File not found.", 404
 
     if os.path.isfile(image_path):
+        image_names.append(image_name)
         return render_template("label_image.html", image_name=image_name, text=text)
+    return "File not found.", 404
 
 
 @app.route("/save_colors", methods=["POST"])

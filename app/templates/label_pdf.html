@@ -224,6 +224,13 @@
 
         loadPdf();
     </script>
+    <script>
+      window.addEventListener("beforeunload", () => {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage("refresh-index", window.location.origin);
+        }
+      });
+    </script>
 </body>
 
 </html>
