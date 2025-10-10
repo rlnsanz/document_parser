@@ -7,63 +7,75 @@
     <meta charset="UTF-8">
     <title>Label PDF</title>
     <style>
-        /* Main layout styles */
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            font-size: 1.1rem;
+            line-height: 1.7;
+            background: #f9fafb;
+            margin: 0;
+            padding: 24px;
+        }
+
         .content {
             display: flex;
-            margin-bottom: 8px;
+            /* align-items: flex-start; */
+            gap: 2.5rem;
+            margin-bottom: 20px;
         }
 
-        /* Styles for PDF container */
         .pdf-container {
             position: relative;
-            overflow-y: visible;
+            overflow: visible;
+            max-width: 60vw;
         }
 
-        /* Styles for metadata container */
+        .pdf-container canvas {
+            width: 100%;
+            height: auto;
+        }
+
         .metadata {
-            flex: 0 0 25%;
+            flex: 0 0 42%;
+            max-width: 42%;
             overflow: hidden;
-            /* let textarea scroll instead */
             max-height: inherit;
-            padding: 1rem 1rem 1rem 0.5rem;
+            padding: 1.25rem 1.5rem;
             box-sizing: border-box;
-            border-left: 1px solid #ccc;
+            border-left: 1px solid #d0d4da;
             display: flex;
             flex-direction: column;
+            gap: 1rem;
+            background: #fff;
+            border-radius: 8px;
+            font-size: 1rem;
         }
 
-        /* Added styles */
         .metadata .meta-field {
             flex: 1;
-            /* take full remaining height */
             display: flex;
             flex-direction: column;
-            margin: 0;
-            /* remove bottom gap so it truly fills */
+            gap: 0.4rem;
         }
 
         .metadata label {
-            display: block;
             font-weight: 600;
-            font-size: 0.8rem;
-            margin-bottom: 0.35rem;
+            font-size: 0.95rem;
+            letter-spacing: 0.01em;
         }
 
         .metadata textarea {
             flex: 1;
             width: 100%;
-            height: 100%;
-            /* ensure fill */
-            min-height: 0;
-            /* allow flex to control height */
-            resize: none;
-            /* prevent user resize breaking layout */
-            font-size: 0.8rem;
-            font-family: sans-serif;
-            padding: 6px 8px;
+            min-height: 140px;
+            resize: vertical;
+            font-size: 1.2rem;
+            font-family: inherit;
+            padding: 10px 12px;
             box-sizing: border-box;
-            line-height: 1.25;
-            overflow: auto;
+            line-height: 1.5;
+            border: 1px solid #c9ced6;
+            border-radius: 6px;
+            background: #fbfbfd;
         }
 
 
@@ -156,7 +168,7 @@
             for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
                 const page = await pdf.getPage(pageNum);
                 const baseViewport = page.getViewport({ scale: 1 });
-                const targetWidth = Math.min(window.innerWidth * 0.7, 900);
+                const targetWidth = Math.min(window.innerWidth * 0.55, 680);
                 const scale = targetWidth / baseViewport.width;
                 const viewport = page.getViewport({ scale });
 

@@ -318,6 +318,9 @@ def reflow_ocr_text_conservative(text: str) -> str:
     out = re.sub(r"\bU\.\s*S\.", "U.S.", out)
     out = re.sub(r"\bi\s+n\b", "in", out)  # "i n" -> "in"
     out = re.sub(r"(\w)-\s+(\w)", r"\1\2", out)  # leftover hyphen-wraps
+    out = re.sub(
+        r"\b(?:[a-z]\s+){1,}[a-z]\b", lambda m: m.group(0).replace(" ", ""), out
+    )
     out = re.sub(r"\s{3,}", " ", out).strip()
 
     return out
