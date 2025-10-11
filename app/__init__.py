@@ -381,231 +381,45 @@ def _process_text_blocks(lines: list[str]):
     A generator that iterates through lines and yields complete text blocks
     (paragraphs, headings, or list items).
     """
-    buffer = []
-
-
-# --- Constants and Helpers --------------------------------------------------
-
-# Sets of words to conservatively prevent incorrect line joining.
-# e.g., don't join "is" and "a" to form "isa".
-_JOIN_BLOCK_PREV = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "by",
-    "for",
-    "from",
-    "had",
-    "has",
-    "have",
-    "he",
-    "her",
-    "his",
-    "i",
-    "if",
-    "in",
-    "is",
-    "it",
-    "its",
-    "of",
-    "on",
-    "or",
-    "our",
-    "she",
-    "so",
-    "than",
-    "that",
-    "the",
-    "their",
-    "them",
-    "then",
-    "they",
-    "this",
-    "to",
-    "us",
-    "was",
-    "we",
-    "were",
-    "which",
-    "who",
-    "will",
-    "with",
-    "you",
-    "your",
-    "per",
-}
-_JOIN_BLOCK_NEXT = {
-    "a",
-    "an",
-    "and",
-    "the",
-    "that",
-    "this",
-    "these",
-    "those",
-    "then",
-    "there",
-    "their",
-    "they",
-    "with",
-    "from",
-    "into",
-    "onto",
-    "over",
-    "under",
-    "between",
-    "within",
-    "without",
-    "another",
-    "any",
-    "all",
-    "are",
-    "was",
-    "were",
-    "have",
-    "has",
-    "had",
-    "can",
-    "may",
-    "will",
-    "shall",
-    "must",
-    "should",
-    "could",
-    "would",
-    "not",
-}
-# Allow joining if the next line looks like a common suffix.
-_ALLOW_SUFFIXES = (
-    "tion",
-    "sion",
-    "ment",
-    "ness",
-    "ity",
-    "bility",
-    "ability",
-    "tity",
-    "gether",
-    "sional",
-    "ker",
-    "ation",
-)
-
-
-def _is_all_caps_heading(s: str) -> bool:
-    """Checks if a line is likely a heading (e.g., 'IMPORTANT NOTICE')."""
-    s = s.strip()
-    if len(s) < 4:
-        return False
-    # Check for 2+ words, all uppercase, with simple punctuation.
-    words = [w for w in s.split() if re.search(r"[A-Z0-9]", w)]
-    return (
-        len(words) >= 2
-        and all(w.upper() == w for w in words)
-        and bool(re.fullmatch(r"[A-Z0-9 ,.'\"&:-]+", s))
-    )
-
-
-def _is_bullet_start(s: str) -> bool:
-    """Checks if a line starts with a bullet point character."""
-    return bool(re.match(r"\s*[•·●*-]\s+", s.lstrip()))
-
-
-# --- Core Logic -------------------------------------------------------------
-
-
-def _process_text_blocks(lines: list[str]):
-    """
-    A generator that iterates through lines and yields complete text blocks
-    (paragraphs, headings, or list items).
-    """
-    buffer = []
+    buffer: list[str] = []
     i = 0
     while i < len(lines):
         line = lines[i].strip()
 
-        # Yield buffer at paragraph breaks, headings, or new bullets
         is_break = not line or _is_all_caps_heading(line) or _is_bullet_start(line)
         if is_break:
             if buffer:
                 yield " ".join(buffer)
                 buffer = []
-            if not line:  # Blank line (paragraph break)
+            if not line:
                 i += 1
                 continue
             if _is_all_caps_heading(line):
                 yield line
                 i += 1
                 continue
-            # It's a bullet
-            line = re.sub(r"^\s*[•·●*-]\s*", "- ", line)  # Normalize bullet
-            yield line
-        # Yield buffer at paragraph breaks, headings, or new bullets
-        is_break = not line or _is_all_caps_heading(line) or _is_bullet_start(line)
-        if is_break:
-            if buffer:
-                yield " ".join(buffer)
-                buffer = []
-            if not line:  # Blank line (paragraph break)
-                i += 1
-                continue
-            if _is_all_caps_heading(line):
-                yield line
-                i += 1
-                continue
-            # It's a bullet
-            line = re.sub(r"^\s*[•·●*-]\s*", "- ", line)  # Normalize bullet
+            line = re.sub(r"^\s*[•·●*-]\s*", "- ", line)
             yield line
             i += 1
             continue
 
-        # --- Regular line joining logic ---
         if not buffer:
             buffer.append(line)
         elif buffer[-1].endswith("-"):
-            # Join hyphenated word
             buffer[-1] = buffer[-1][:-1] + line
         else:
-            # Conservatively decide whether to join with or without a space
             prev_word = buffer[-1].split()[-1].lower()
             next_word = line.split()[0].lower()
-
-            # Block joining for common words unless it's a clear suffix
             is_blocked = (
                 prev_word in _JOIN_BLOCK_PREV
                 and not next_word.startswith(_ALLOW_SUFFIXES)
             ) or next_word in _JOIN_BLOCK_NEXT
 
             if is_blocked:
-                buffer.append(line)  # Add as a new "word" to be space-joined later
-        # --- Regular line joining logic ---
-        if not buffer:
-            buffer.append(line)
-        elif buffer[-1].endswith("-"):
-            # Join hyphenated word
-            buffer[-1] = buffer[-1][:-1] + line
-        else:
-            # Conservatively decide whether to join with or without a space
-            prev_word = buffer[-1].split()[-1].lower()
-            next_word = line.split()[0].lower()
-
-            # Block joining for common words unless it's a clear suffix
-            is_blocked = (
-                prev_word in _JOIN_BLOCK_PREV
-                and not next_word.startswith(_ALLOW_SUFFIXES)
-            ) or next_word in _JOIN_BLOCK_NEXT
-
-            if is_blocked:
-                buffer.append(line)  # Add as a new "word" to be space-joined later
+                buffer.append(line)
             else:
-                # Likely a split word, glue without a space
                 buffer[-1] += line
-                # Likely a split word, glue without a space
-                buffer[-1] += line
+
         i += 1
 
     if buffer:
