@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import safe_join, secure_filename
 from werkzeug.exceptions import NotFound
@@ -9,12 +9,16 @@ import mimetypes
 import math
 import sys
 import re
+from functools import lru_cache
+
+from wordfreq import zipf_frequency, top_n_list
+
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import config
 
-from .constants import DOC_DIR
+from constants import DOC_DIR
 
 app = Flask(__name__)
 
@@ -324,6 +328,172 @@ _ALLOW_SUFFIXES = (
     "ker",
     "ation",
 )
+_WORD_SPLIT_PATTERN = re.compile(r"\b([A-Za-z]{2,})\b(\s+)\b([A-Za-z]{2,})\b")
+
+_COMMON_WORDS: Optional[Set[str]] = None
+
+
+if zipf_frequency is not None:
+
+    @lru_cache(maxsize=8192)
+    def _zipf(word: str) -> float:
+        return zipf_frequency(word, "en")
+
+else:
+
+    def _zipf(word: str) -> float:
+        return 0.0
+
+
+def _is_common_word(word: str) -> bool:
+    global _COMMON_WORDS
+    if top_n_list is None:
+        return False
+    if _COMMON_WORDS is None:
+        _COMMON_WORDS = set(top_n_list("en", 50000))
+    return word.lower() in _COMMON_WORDS
+
+
+def _is_all_caps_heading(s: str) -> bool:
+    """Checks if a line is likely a heading (e.g., 'IMPORTANT NOTICE')."""
+    s = s.strip()
+    if len(s) < 4:
+        return False
+    # Check for 2+ words, all uppercase, with simple punctuation.
+    words = [w for w in s.split() if re.search(r"[A-Z0-9]", w)]
+    return (
+        len(words) >= 2
+        and all(w.upper() == w for w in words)
+        and bool(re.fullmatch(r"[A-Z0-9 ,.'\"&:-]+", s))
+    )
+
+
+def _is_bullet_start(s: str) -> bool:
+    """Checks if a line starts with a bullet point character."""
+    return bool(re.match(r"\s*[•·●*-]\s+", s.lstrip()))
+
+
+# --- Core Logic -------------------------------------------------------------
+
+
+def _process_text_blocks(lines: list[str]):
+    """
+    A generator that iterates through lines and yields complete text blocks
+    (paragraphs, headings, or list items).
+    """
+    buffer = []
+
+
+# --- Constants and Helpers --------------------------------------------------
+
+# Sets of words to conservatively prevent incorrect line joining.
+# e.g., don't join "is" and "a" to form "isa".
+_JOIN_BLOCK_PREV = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "had",
+    "has",
+    "have",
+    "he",
+    "her",
+    "his",
+    "i",
+    "if",
+    "in",
+    "is",
+    "it",
+    "its",
+    "of",
+    "on",
+    "or",
+    "our",
+    "she",
+    "so",
+    "than",
+    "that",
+    "the",
+    "their",
+    "them",
+    "then",
+    "they",
+    "this",
+    "to",
+    "us",
+    "was",
+    "we",
+    "were",
+    "which",
+    "who",
+    "will",
+    "with",
+    "you",
+    "your",
+    "per",
+}
+_JOIN_BLOCK_NEXT = {
+    "a",
+    "an",
+    "and",
+    "the",
+    "that",
+    "this",
+    "these",
+    "those",
+    "then",
+    "there",
+    "their",
+    "they",
+    "with",
+    "from",
+    "into",
+    "onto",
+    "over",
+    "under",
+    "between",
+    "within",
+    "without",
+    "another",
+    "any",
+    "all",
+    "are",
+    "was",
+    "were",
+    "have",
+    "has",
+    "had",
+    "can",
+    "may",
+    "will",
+    "shall",
+    "must",
+    "should",
+    "could",
+    "would",
+    "not",
+}
+# Allow joining if the next line looks like a common suffix.
+_ALLOW_SUFFIXES = (
+    "tion",
+    "sion",
+    "ment",
+    "ness",
+    "ity",
+    "bility",
+    "ability",
+    "tity",
+    "gether",
+    "sional",
+    "ker",
+    "ation",
+)
 
 
 def _is_all_caps_heading(s: str) -> bool:
@@ -374,6 +544,22 @@ def _process_text_blocks(lines: list[str]):
             # It's a bullet
             line = re.sub(r"^\s*[•·●*-]\s*", "- ", line)  # Normalize bullet
             yield line
+        # Yield buffer at paragraph breaks, headings, or new bullets
+        is_break = not line or _is_all_caps_heading(line) or _is_bullet_start(line)
+        if is_break:
+            if buffer:
+                yield " ".join(buffer)
+                buffer = []
+            if not line:  # Blank line (paragraph break)
+                i += 1
+                continue
+            if _is_all_caps_heading(line):
+                yield line
+                i += 1
+                continue
+            # It's a bullet
+            line = re.sub(r"^\s*[•·●*-]\s*", "- ", line)  # Normalize bullet
+            yield line
             i += 1
             continue
 
@@ -396,11 +582,130 @@ def _process_text_blocks(lines: list[str]):
 
             if is_blocked:
                 buffer.append(line)  # Add as a new "word" to be space-joined later
+        # --- Regular line joining logic ---
+        if not buffer:
+            buffer.append(line)
+        elif buffer[-1].endswith("-"):
+            # Join hyphenated word
+            buffer[-1] = buffer[-1][:-1] + line
+        else:
+            # Conservatively decide whether to join with or without a space
+            prev_word = buffer[-1].split()[-1].lower()
+            next_word = line.split()[0].lower()
+
+            # Block joining for common words unless it's a clear suffix
+            is_blocked = (
+                prev_word in _JOIN_BLOCK_PREV
+                and not next_word.startswith(_ALLOW_SUFFIXES)
+            ) or next_word in _JOIN_BLOCK_NEXT
+
+            if is_blocked:
+                buffer.append(line)  # Add as a new "word" to be space-joined later
             else:
+                # Likely a split word, glue without a space
+                buffer[-1] += line
                 # Likely a split word, glue without a space
                 buffer[-1] += line
         i += 1
 
+    if buffer:
+        yield " ".join(buffer)
+
+
+def _post_process(text: str) -> str:
+    """Applies final regex cleanup for common OCR artifacts."""
+
+    # --- Fix incorrectly joined common words ---
+    _SPLIT_WORDS = {
+        "asa": "as a",
+        "ofa": "of a",
+        "ina": "in a",
+        "tothe": "to the",
+        "isa": "is a",
+        "wasa": "was a",
+        "andthe": "and the",
+        "inthe": "in the",
+        "ofthe": "of the",
+        "bea": "be a",
+        "ora": "or a",
+    }
+    for word, replacement in _SPLIT_WORDS.items():
+        # Use \b for word boundaries to avoid replacing parts of other words
+        pattern = f"\\b{word}\\b"
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    # Fix common acronyms and remove spaces in s p a c e d o u t words
+    text = re.sub(r"\b([A-Z])\.\s*([A-Z])\.\b", r"\1.\2.", text)
+    text = re.sub(
+        r"\b([a-zA-Z]\s+){2,}[a-zA-Z]\b",
+        lambda m: m.group(0).replace(" ", ""),
+        text,
+    )
+    # Standardize spacing around punctuation and remaining hyphens
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\s+([,.;:!?\"'])", r"\1", text)
+    text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)
+    return text.strip()
+
+
+def _merge_dictionary_splits(text: str) -> str:
+    if zipf_frequency is None:
+        return text
+
+    def should_merge(left: str, right: str) -> bool:
+        joined = f"{left}{right}"
+        freq_joined = _zipf(joined.lower())
+        freq_left = _zipf(left.lower())
+        freq_right = _zipf(right.lower())
+        max_parts = max(freq_left, freq_right)
+        min_parts = min(freq_left, freq_right)
+
+        if freq_joined >= 5.0:
+            return True
+        if freq_joined >= 4.0 and max_parts < 3.6:
+            return True
+        if freq_joined - max_parts >= 0.75 and freq_joined >= 3.5:
+            return True
+        if len(joined) >= 7 and freq_joined >= 3.6 and min_parts < 2.8:
+            return True
+        if (
+            _is_common_word(joined)
+            and not _is_common_word(left)
+            and not _is_common_word(right)
+        ):
+            return True
+        if right.lower().startswith(_ALLOW_SUFFIXES) and freq_joined >= 3.5:
+            return True
+        return False
+
+    def replacer(match: re.Match) -> str:
+        gap = match.group(2)
+        if "\n\n" in gap:
+            return match.group(0)
+        left, right = match.group(1), match.group(3)
+        return left + right if should_merge(left, right) else match.group(0)
+
+    for _ in range(3):
+        new_text = _WORD_SPLIT_PATTERN.sub(replacer, text)
+        if new_text == text:
+            break
+        text = new_text
+    return text
+
+
+# --- Main Function ----------------------------------------------------------
+
+
+def reflow_ocr_text(text: str) -> str:
+    """
+    Reflows OCR text by intelligently joining lines while preserving
+    paragraphs, headings, and bullet points.
+    """
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    processed_blocks = list(_process_text_blocks(lines))
+    processed = "\n\n".join(processed_blocks)
+    processed = _merge_dictionary_splits(processed)
+    return _post_process(processed)
     if buffer:
         yield " ".join(buffer)
 
