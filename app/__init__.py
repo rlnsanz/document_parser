@@ -18,7 +18,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import config
 
-from constants import DOC_DIR
+from .constants import DOC_DIR
 
 app = Flask(__name__)
 
