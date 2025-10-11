@@ -442,6 +442,7 @@ def _post_process(text: str) -> str:
         "ofthe": "of the",
         "bea": "be a",
         "ora": "or a",
+        "itis": "it is",
     }
     for word, replacement in _SPLIT_WORDS.items():
         # Use \b for word boundaries to avoid replacing parts of other words
@@ -520,61 +521,6 @@ def reflow_ocr_text(text: str) -> str:
     processed = "\n\n".join(processed_blocks)
     processed = _merge_dictionary_splits(processed)
     return _post_process(processed)
-    if buffer:
-        yield " ".join(buffer)
-
-
-def _post_process(text: str) -> str:
-    """Applies final regex cleanup for common OCR artifacts."""
-
-    # --- Fix incorrectly joined common words ---
-    _SPLIT_WORDS = {
-        "asa": "as a",
-        "ofa": "of a",
-        "ina": "in a",
-        "tothe": "to the",
-    }
-    for word, replacement in _SPLIT_WORDS.items():
-        # Use \b for word boundaries to avoid replacing parts of other words
-        pattern = f"\\b{word}\\b"
-        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-
-    # Fix common acronyms and remove spaces in s p a c e d o u t words
-    text = re.sub(r"\b([A-Z])\.\s*([A-Z])\.\b", r"\1.\2.", text)
-    text = re.sub(
-        r"\b([a-zA-Z]\s+){2,}[a-zA-Z]\b",
-        lambda m: m.group(0).replace(" ", ""),
-        text,
-    )
-    # Standardize spacing around punctuation and remaining hyphens
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\s+([,.;:!?\"'])", r"\1", text)
-    text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)
-    return text.strip()
-
-
-# --- Main Function ----------------------------------------------------------
-
-
-def reflow_ocr_text(text: str) -> str:
-    """
-    Reflows OCR text by intelligently joining lines while preserving
-    paragraphs, headings, and bullet points.
-
-    Args:
-        text: The raw text from OCR.
-
-    Returns:
-        The cleaned and reflowed text.
-    """
-    # Normalize newlines and split
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
-
-    # Process lines into logical blocks (paragraphs, headings, etc.)
-    processed_blocks = list(_process_text_blocks(lines))
-
-    # Join blocks and apply final cleanup
-    return _post_process("\n\n".join(processed_blocks))
 
 
 if __name__ == "__main__":
