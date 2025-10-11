@@ -204,7 +204,7 @@ def metadata_for_page(page_num: int):
         return jsonify(
             [
                 {
-                    f"txt-page-{page_num+1}": reflow_ocr_text_conservative(
+                    f"txt-page-{page_num+1}": reflow_ocr_text(
                         record[config.page_text].values[0]
                     )
                 }
@@ -214,129 +214,248 @@ def metadata_for_page(page_num: int):
         return jsonify([{f"ocr-page-{page_num+1}": record[config.page_text].values[0]}])
 
 
-COMMON_SUBS = {
-    r"\b([A-Z])\.\s*([A-Z])\.\b": r"\1.\2.",  # handles U. S., E. U., etc.
+# --- Constants and Helpers --------------------------------------------------
+
+# Sets of words to conservatively prevent incorrect line joining.
+# e.g., don't join "is" and "a" to form "isa".
+_JOIN_BLOCK_PREV = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "had",
+    "has",
+    "have",
+    "he",
+    "her",
+    "his",
+    "i",
+    "if",
+    "in",
+    "is",
+    "it",
+    "its",
+    "of",
+    "on",
+    "or",
+    "our",
+    "she",
+    "so",
+    "than",
+    "that",
+    "the",
+    "their",
+    "them",
+    "then",
+    "they",
+    "this",
+    "to",
+    "us",
+    "was",
+    "we",
+    "were",
+    "which",
+    "who",
+    "will",
+    "with",
+    "you",
+    "your",
+    "per",
 }
-SPACED_WORD = re.compile(r"\b(?:[A-Za-z]\s+){2,}[A-Za-z]\b")
+_JOIN_BLOCK_NEXT = {
+    "a",
+    "an",
+    "and",
+    "the",
+    "that",
+    "this",
+    "these",
+    "those",
+    "then",
+    "there",
+    "their",
+    "they",
+    "with",
+    "from",
+    "into",
+    "onto",
+    "over",
+    "under",
+    "between",
+    "within",
+    "without",
+    "another",
+    "any",
+    "all",
+    "are",
+    "was",
+    "were",
+    "have",
+    "has",
+    "had",
+    "can",
+    "may",
+    "will",
+    "shall",
+    "must",
+    "should",
+    "could",
+    "would",
+    "not",
+}
+# Allow joining if the next line looks like a common suffix.
+_ALLOW_SUFFIXES = (
+    "tion",
+    "sion",
+    "ment",
+    "ness",
+    "ity",
+    "bility",
+    "ability",
+    "tity",
+    "gether",
+    "sional",
+    "ker",
+    "ation",
+)
 
 
-def _wide_clean(text: str) -> str:
-    for pattern, repl in COMMON_SUBS.items():
-        text = re.sub(pattern, repl, text)
-    return SPACED_WORD.sub(lambda m: m.group(0).replace(" ", ""), text)
+def _is_all_caps_heading(s: str) -> bool:
+    """Checks if a line is likely a heading (e.g., 'IMPORTANT NOTICE')."""
+    s = s.strip()
+    if len(s) < 4:
+        return False
+    # Check for 2+ words, all uppercase, with simple punctuation.
+    words = [w for w in s.split() if re.search(r"[A-Z0-9]", w)]
+    return (
+        len(words) >= 2
+        and all(w.upper() == w for w in words)
+        and bool(re.fullmatch(r"[A-Z0-9 ,.'\"&:-]+", s))
+    )
 
 
-def reflow_ocr_text_conservative(text: str) -> str:
+def _is_bullet_start(s: str) -> bool:
+    """Checks if a line starts with a bullet point character."""
+    return bool(re.match(r"\s*[•·●*-]\s+", s.lstrip()))
+
+
+# --- Core Logic -------------------------------------------------------------
+
+
+def _process_text_blocks(lines: list[str]):
     """
-    Reflow OCR text conservatively:
-      - Preserve blank-line paragraph breaks
-      - Treat ALL-CAPS lines (2+ words) as headings on their own lines
-      - Keep bullets on separate lines (•, ·, ●, -, *)
-      - Join other line wraps; fix hyphenated joins and common OCR spaces
+    A generator that iterates through lines and yields complete text blocks
+    (paragraphs, headings, or list items).
     """
-    # Normalize newlines
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-
-    def is_all_caps_heading(s: str) -> bool:
-        s = s.strip()
-        if len(s) < 4:
-            return False
-        # Only letters, digits, spaces, and simple punct allowed
-        if not re.fullmatch(r"[A-Z0-9 ,.'\"&:-]+", s):
-            return False
-        words = [w for w in s.split() if re.search(r"[A-Z0-9]", w)]
-        return len(words) >= 2 and all(w.upper() == w for w in words)
-
-    def is_bullet_start(s: str) -> bool:
-        return bool(re.match(r"\s*(?:[•·●]|[-*])\s*$", s)) or bool(
-            re.match(r"\s*(?:[•·●]|[-*])\s+\S", s)
-        )
-
-    paras = []
-    buf = []  # current paragraph word buffer
-    in_list = False  # whether we're currently building a bullet list
-
+    buffer = []
     i = 0
     while i < len(lines):
         line = lines[i].strip()
 
-        # Paragraph break
-        if line == "":
-            if buf:
-                paras.append(" ".join(buf).strip())
-                buf = []
-            in_list = False
-            i += 1
-            continue
-
-        # ALL-CAPS heading on its own paragraph
-        if is_all_caps_heading(line):
-            if buf:
-                paras.append(" ".join(buf).strip())
-                buf = []
-            paras.append(line)  # keep as-is
-            in_list = False
-            i += 1
-            continue
-
-        # Bullets (allow cases where bullet symbol is on its own line)
-        if is_bullet_start(line):
-            if buf:
-                paras.append(" ".join(buf).strip())
-                buf = []
-            # Normalize to "- "
-            if re.match(r"\s*(?:[•·●]|[-*])\s*$", line) and i + 1 < len(lines):
-                # bullet mark alone on a line; consume next content line(s)
-                j = i + 1
-                # accumulate until next blank/heading/bullet
-                item_parts = []
-                while j < len(lines):
-                    nxt = lines[j].strip()
-                    if nxt == "" or is_all_caps_heading(nxt) or is_bullet_start(nxt):
-                        break
-                    item_parts.append(nxt)
-                    j += 1
-                paras.append("- " + " ".join(item_parts).strip())
-                i = j
-                in_list = True
-                continue
-            else:
-                # bullet with inline text
-                # normalize bullet prefix to "- "
-                line = re.sub(r"^\s*(?:[•·●]|[-*])\s*", "- ", line)
-                paras.append(line)
-                in_list = True
+        # Yield buffer at paragraph breaks, headings, or new bullets
+        is_break = not line or _is_all_caps_heading(line) or _is_bullet_start(line)
+        if is_break:
+            if buffer:
+                yield " ".join(buffer)
+                buffer = []
+            if not line:  # Blank line (paragraph break)
                 i += 1
                 continue
+            if _is_all_caps_heading(line):
+                yield line
+                i += 1
+                continue
+            # It's a bullet
+            line = re.sub(r"^\s*[•·●*-]\s*", "- ", line)  # Normalize bullet
+            yield line
+            i += 1
+            continue
 
-        # Normal text: join with previous (handle hyphenation)
-        if buf:
-            if buf[-1].endswith("-"):
-                buf[-1] = buf[-1][:-1]  # remove hyphen, no space
-                buf.append(line)
-            else:
-                buf.append(line)
+        # --- Regular line joining logic ---
+        if not buffer:
+            buffer.append(line)
+        elif buffer[-1].endswith("-"):
+            # Join hyphenated word
+            buffer[-1] = buffer[-1][:-1] + line
         else:
-            buf.append(line)
+            # Conservatively decide whether to join with or without a space
+            prev_word = buffer[-1].split()[-1].lower()
+            next_word = line.split()[0].lower()
+
+            # Block joining for common words unless it's a clear suffix
+            is_blocked = (
+                prev_word in _JOIN_BLOCK_PREV
+                and not next_word.startswith(_ALLOW_SUFFIXES)
+            ) or next_word in _JOIN_BLOCK_NEXT
+
+            if is_blocked:
+                buffer.append(line)  # Add as a new "word" to be space-joined later
+            else:
+                # Likely a split word, glue without a space
+                buffer[-1] += line
         i += 1
 
-    if buf:
-        paras.append(" ".join(buf).strip())
+    if buffer:
+        yield " ".join(buffer)
 
-    # Post-clean: collapse spaces, fix punctuation spacing, common OCR artifacts
-    out = "\n\n".join(paras)
-    out = re.sub(r"[ \t]+", " ", out)
-    out = re.sub(r"\s+([,.;:!?])", r"\1", out)
-    # out = re.sub(r"\bU\.\s*S\.", "U.S.", out)
-    # out = re.sub(r"\bi\s+n\b", "in", out)  # "i n" -> "in"
-    out = re.sub(r"(\w)-\s+(\w)", r"\1\2", out)  # leftover hyphen-wraps
-    out = re.sub(
-        r"\b(?:[a-z]\s+){1,}[a-z]\b", lambda m: m.group(0).replace(" ", ""), out
+
+def _post_process(text: str) -> str:
+    """Applies final regex cleanup for common OCR artifacts."""
+
+    # --- Fix incorrectly joined common words ---
+    _SPLIT_WORDS = {
+        "asa": "as a",
+        "ofa": "of a",
+        "ina": "in a",
+        "tothe": "to the",
+    }
+    for word, replacement in _SPLIT_WORDS.items():
+        # Use \b for word boundaries to avoid replacing parts of other words
+        pattern = f"\\b{word}\\b"
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+    # Fix common acronyms and remove spaces in s p a c e d o u t words
+    text = re.sub(r"\b([A-Z])\.\s*([A-Z])\.\b", r"\1.\2.", text)
+    text = re.sub(
+        r"\b([a-zA-Z]\s+){2,}[a-zA-Z]\b",
+        lambda m: m.group(0).replace(" ", ""),
+        text,
     )
-    out = re.sub(r"\s{3,}", " ", out).strip()
-    out = _wide_clean(out)
+    # Standardize spacing around punctuation and remaining hyphens
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\s+([,.;:!?\"'])", r"\1", text)
+    text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)
+    return text.strip()
 
-    return out
+
+# --- Main Function ----------------------------------------------------------
+
+
+def reflow_ocr_text(text: str) -> str:
+    """
+    Reflows OCR text by intelligently joining lines while preserving
+    paragraphs, headings, and bullet points.
+
+    Args:
+        text: The raw text from OCR.
+
+    Returns:
+        The cleaned and reflowed text.
+    """
+    # Normalize newlines and split
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
+
+    # Process lines into logical blocks (paragraphs, headings, etc.)
+    processed_blocks = list(_process_text_blocks(lines))
+
+    # Join blocks and apply final cleanup
+    return _post_process("\n\n".join(processed_blocks))
 
 
 if __name__ == "__main__":
