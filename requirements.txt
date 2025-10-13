@@ -3,11 +3,11 @@ Pillow
 pdf2image
 PyMuPDF
 pytesseract
-flordb>=3.4.10
+flordb>=3.4.11
 torch
 torchvision
 fuzzywuzzy
-python-doctr[torch]
+python-doctr
 spacy
 numpy
 seqeval

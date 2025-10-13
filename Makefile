@@ -15,6 +15,7 @@ export FLASK_ENV=developmentß
 # Absolute path to the virtual environment's Python interpreter
 VENV_PATH := $(abspath .venv)
 PYTHON := $(VENV_PATH)/bin/python
+PIP := $(VENV_PATH)/bin/pip
 UNAME_S := $(shell uname -s)
 
 all: run
