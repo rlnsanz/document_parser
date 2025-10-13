@@ -26,7 +26,7 @@ mimetypes.add_type("text/javascript", ".mjs")
 
 pdf_names = []
 image_names = []
-feat_names = [config.skip_ocr, config.page_text]
+feat_names = [config.skip_ocr, config.page_text, config.page_color]
 memoized_pdfs = None
 memoized_images = None
 
@@ -205,15 +205,16 @@ def metadata_for_page(page_num: int):
         or (isinstance(skip_ocr, str) and skip_ocr.lower() == "true")
         or (isinstance(skip_ocr, float) and math.isnan(skip_ocr))
     ):
-        return jsonify(
-            [
-                {
-                    f"txt-page-{page_num+1}": reflow_ocr_text(
-                        record[config.page_text].values[0]
-                    )
-                }
-            ]
-        )
+        # if page_color is 0 or NaN, return reflowed text
+
+        if record[config.page_color].values[0] == 0 or (
+            isinstance(record[config.page_color].values[0], float)
+            and math.isnan(record[config.page_color].values[0])
+        ):
+            display_text = reflow_ocr_text(record[config.page_text].values[0])
+        else:
+            display_text = record[config.page_text].values[0]
+        return jsonify([{f"txt-page-{page_num+1}": display_text}])
     else:
         return jsonify([{f"ocr-page-{page_num+1}": record[config.page_text].values[0]}])
 
