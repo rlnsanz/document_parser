@@ -426,6 +426,85 @@ def _process_text_blocks(lines: list[str]):
         yield " ".join(buffer)
 
 
+def _merge_dictionary_splits(text: str) -> str:
+    if zipf_frequency is None:
+        return text
+
+    def should_merge(left: str, right: str) -> bool:
+        joined = f"{left}{right}"
+        freq_joined = _zipf(joined.lower())
+        freq_left = _zipf(left.lower())
+        freq_right = _zipf(right.lower())
+        max_parts = max(freq_left, freq_right)
+        min_parts = min(freq_left, freq_right)
+
+        if freq_joined >= 5.0:
+            return True
+        if freq_joined >= 4.0 and max_parts < 3.6:
+            return True
+        if freq_joined - max_parts >= 0.75 and freq_joined >= 3.5:
+            return True
+        if len(joined) >= 7 and freq_joined >= 3.6 and min_parts < 2.8:
+            return True
+        if (
+            _is_common_word(joined)
+            and not _is_common_word(left)
+            and not _is_common_word(right)
+        ):
+            return True
+        if right.lower().startswith(_ALLOW_SUFFIXES) and freq_joined >= 3.5:
+            return True
+        return False
+
+    def replacer(match: re.Match) -> str:
+        gap = match.group(2)
+        if "\n\n" in gap:
+            return match.group(0)
+        left, right = match.group(1), match.group(3)
+        return left + right if should_merge(left, right) else match.group(0)
+
+    for _ in range(3):
+        new_text = _WORD_SPLIT_PATTERN.sub(replacer, text)
+        if new_text == text:
+            break
+        text = new_text
+    return text
+
+
+def _join_two_char_splits(text: str) -> str:
+    """
+    Join patterns like "1 0" -> "10" and "A n" -> "An".
+    Conservative: joins digit-digit pairs always; joins letter-letter pairs
+    when the joined form looks common/high-frequency or the first char is uppercase.
+    Multiple passes to collapse sequences like "1 0 0" -> "100".
+    """
+    pattern = re.compile(r"\b([A-Za-z0-9])\s+([A-Za-z0-9])\b")
+
+    def repl(m: re.Match) -> str:
+        a, b = m.group(1), m.group(2)
+        # join digits always
+        if a.isdigit() and b.isdigit():
+            return a + b
+        # join letters conservatively
+        if a.isalpha() and b.isalpha():
+            joined = a + b
+            # join when first char is uppercase (likely OCR split) or joined is common/high freq
+            score = _zipf(joined.lower()) if zipf_frequency is not None else 0.0
+            if a.isupper() or _is_common_word(joined) or score >= 4.0:
+                # preserve sensible casing: if A n -> An (b.lower()), otherwise keep original
+                if a.isupper() and b.islower():
+                    return a + b.lower()
+                return joined
+        return m.group(0)
+
+    for _ in range(3):
+        new = pattern.sub(repl, text)
+        if new == text:
+            break
+        text = new
+    return text
+
+
 def _post_process(text: str) -> str:
     """Applies final regex cleanup for common OCR artifacts."""
 
@@ -443,6 +522,7 @@ def _post_process(text: str) -> str:
         "bea": "be a",
         "ora": "or a",
         "itis": "it is",
+        "ona": "on a",
     }
     for word, replacement in _SPLIT_WORDS.items():
         # Use \b for word boundaries to avoid replacing parts of other words
@@ -451,6 +531,10 @@ def _post_process(text: str) -> str:
 
     # Fix common acronyms and remove spaces in s p a c e d o u t words
     text = re.sub(r"\b([A-Z])\.\s*([A-Z])\.\b", r"\1.\2.", text)
+
+    # New join-pass for two-character splits (digits and common letter pairs)
+    text = _join_two_char_splits(text)
+
     text = re.sub(
         r"\b([a-zA-Z]\s+){2,}[a-zA-Z]\b",
         lambda m: m.group(0).replace(" ", ""),
