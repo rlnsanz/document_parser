@@ -371,7 +371,9 @@ def _is_all_caps_heading(s: str) -> bool:
 
 def _is_bullet_start(s: str) -> bool:
     """Checks if a line starts with a bullet point character."""
-    return bool(re.match(r"\s*[•·●*-]\s+", s.lstrip()))
+    # Allow common bullet characters (• · ● ▪ ‣ ◦ ∙ * -) and accept zero or more spaces
+    # after the bullet so we catch "•Text" as well as "• Text".
+    return bool(re.match(r"^\s*[•·●▪‣◦∙*\-]\s*", s))
 
 
 # --- Core Logic -------------------------------------------------------------
@@ -379,15 +381,17 @@ def _is_bullet_start(s: str) -> bool:
 
 def _process_text_blocks(lines: list[str]):
     """
-    A generator that iterates through lines and yields complete text blocks
-    (paragraphs, headings, or list items).
+    Yields paragraphs, headings, or bullet items, merging bullet-only lines with their content.
     """
     buffer: list[str] = []
     i = 0
     while i < len(lines):
         line = lines[i].strip()
 
-        is_break = not line or _is_all_caps_heading(line) or _is_bullet_start(line)
+        is_heading = _is_all_caps_heading(line)
+        is_bullet = _is_bullet_start(line)
+        is_break = not line or is_heading or is_bullet
+
         if is_break:
             if buffer:
                 yield " ".join(buffer)
@@ -395,12 +399,27 @@ def _process_text_blocks(lines: list[str]):
             if not line:
                 i += 1
                 continue
-            if _is_all_caps_heading(line):
+            if is_heading:
                 yield line
                 i += 1
                 continue
-            line = re.sub(r"^\s*[•·●*-]\s*", "- ", line)
-            yield line
+            # Canonicalize bullet
+            bullet_line = re.sub(r"^\s*[•·●▪‣◦∙*\-]\s*", "- ", line)
+            # If bullet is just "- ", merge with next non-break line
+            if bullet_line.strip() == "-":
+                j = i + 1
+                while j < len(lines):
+                    next_line = lines[j].strip()
+                    if (
+                        not next_line
+                        or _is_all_caps_heading(next_line)
+                        or _is_bullet_start(next_line)
+                    ):
+                        break
+                    bullet_line = "- " + next_line
+                    i = j  # skip merged line
+                    break
+            yield bullet_line
             i += 1
             continue
 
@@ -419,7 +438,7 @@ def _process_text_blocks(lines: list[str]):
             if is_blocked:
                 buffer.append(line)
             else:
-                buffer[-1] += line
+                buffer[-1] += " " + line  # Instead of buffer[-1] += line
 
         i += 1
 
