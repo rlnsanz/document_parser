@@ -187,6 +187,20 @@
                 overlay.onclick = () => {
                     i = (i + 1) % color_wheel.length;
                     overlay.style.backgroundColor = color_wheel[i];
+
+                    // Copy canvas as PNG to clipboard (Mac/modern browsers)
+                    canvas.toBlob(blob => {
+                        if (!blob) {
+                            alert('Could not copy image to clipboard.');
+                            return;
+                        }
+                        navigator.clipboard.write([
+                            new ClipboardItem({ 'image/png': blob })
+                        ]).catch(err => {
+                            console.error('Clipboard copy failed:', err);
+                            alert('Could not copy image to clipboard.');
+                        });
+                    }, 'image/png');
                 };
 
                 const pdfWrapper = document.createElement('div');
