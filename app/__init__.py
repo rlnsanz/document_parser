@@ -564,6 +564,7 @@ def _post_process(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\s+([,.;:!?\"'])", r"\1", text)
     text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)
+    text = text.replace("ﬁ", "fi").replace("ﬂ", "fl")
     return text.strip()
 
 
