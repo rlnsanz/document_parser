@@ -565,7 +565,23 @@ def _post_process(text: str) -> str:
     text = re.sub(r"\s+([,.;:!?\"'])", r"\1", text)
     text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)
     text = text.replace("ﬁ", "fi").replace("ﬂ", "fl")
+    text = fix_government(text)
     return text.strip()
+
+
+def fix_government(text: str) -> str:
+    """
+    Fixes common OCR errors in the word "government".
+    """
+    # govemment
+    text = re.sub(r"\bgovemment\b", "government", text, flags=re.IGNORECASE)
+    # goverment
+    text = re.sub(r"\bgoverment\b", "government", text, flags=re.IGNORECASE)
+    # goverment's
+    text = re.sub(r"\bgoverment's\b", "government's", text, flags=re.IGNORECASE)
+    # goveming
+    text = re.sub(r"\bgoveming\b", "governing", text, flags=re.IGNORECASE)
+    return text
 
 
 def _merge_dictionary_splits(text: str) -> str:
