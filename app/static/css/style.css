@@ -45,3 +45,95 @@
     padding: 0 5px;
     /* Add some padding to not have text touch the edges */
 }
+
+body {
+    font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 1.1rem;
+    background: #f9fafb;
+    margin: 0;
+    padding: 24px;
+    /* prevent accidental horizontal scroll when metadata is resized */
+    overflow-x: hidden;
+}
+
+/* Use full width and let padding control spacing; avoids viewport-calc overflow */
+.content {
+    display: flex;
+    gap: 2.5rem;
+    margin-bottom: 20px;
+    width: 100%;
+    box-sizing: border-box;
+    align-items: stretch;
+    /* allow wrapping if viewport gets tiny */
+    min-width: 0;
+}
+
+/* keep PDF column bounded but flexible */
+.pdf-container {
+    position: relative;
+    overflow: visible;
+    flex: 0 0 auto;
+    max-width: 60vw;
+    width: auto;
+
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 0;
+}
+
+/* Let canvas scale to its container instead of forcing px width via inline styles */
+.pdf-container canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+/* metadata stays resizable horizontally but avoid exceeding viewport dangerously */
+.metadata {
+    flex: 1 1 0;
+    min-width: 260px;
+    max-width: calc(100vw - 320px);
+    padding: 1.25rem 1.5rem;
+    box-sizing: border-box;
+    overflow: auto;
+    resize: horizontal;
+
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Only the first field should grow to match PDF height; other fields size to content */
+.metadata .meta-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+    min-height: 0;
+}
+.metadata .meta-field:first-child {
+    flex: 1 1 auto;
+}
+.metadata .meta-field:not(:first-child) {
+    flex: 0 0 auto;
+}
+
+/* Make the first textarea stretch; others remain auto-height but vertically resizable */
+.metadata textarea {
+    width: 100%;
+    resize: vertical;
+    font-size: 1.1rem;
+    font-family: inherit;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    border: 1px solid #c9ced6;
+    border-radius: 6px;
+    background: #fbfbfd;
+    max-width: 100%;
+}
+.metadata .meta-field:first-child textarea {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+}

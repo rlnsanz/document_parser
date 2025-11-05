@@ -18,64 +18,79 @@
 
         .content {
             display: flex;
-            /* align-items: flex-start; */
             gap: 2.5rem;
             margin-bottom: 20px;
+            /* Make the layout span the viewport and allow the right column to grow */
+            width: calc(100vw - 48px);
+            /* account for body padding */
+            box-sizing: border-box;
+            align-items: stretch;
         }
 
         .pdf-container {
             position: relative;
             overflow: visible;
+            /* Keep PDF column bounded so metadata can expand to the right */
+            flex: 0 0 auto;
             max-width: 60vw;
+            width: auto;
+            /* ensure pdf wrapper/canvas can fill the parent's height */
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            height: 100%;
         }
 
         .pdf-container canvas {
-            width: 100%;
-            height: auto;
+            width: auto;
+            /* fill vertical space */
+            height: 100%;
+            display: block;
         }
 
+        /* Make metadata column flexible and horizontally resizable */
         .metadata {
-            flex: 0 0 42%;
-            max-width: 42%;
-            overflow: hidden;
-            max-height: inherit;
+            flex: 1 1 0;
+            min-width: 260px;
+            max-width: calc(100vw - 320px);
             padding: 1.25rem 1.5rem;
             box-sizing: border-box;
-            border-left: 1px solid #d0d4da;
+            overflow: auto;
+            resize: horizontal;
+
+            /* make metadata a column so child fields can grow to fill height */
             display: flex;
             flex-direction: column;
-            gap: 1rem;
-            background: #fff;
-            border-radius: 8px;
-            font-size: 1rem;
+            min-height: 0;
+            height: 100%;
         }
 
+        /* Let the first meta-field grow to match PDF height; others size to content */
         .metadata .meta-field {
-            flex: 1;
             display: flex;
             flex-direction: column;
             gap: 0.4rem;
+            margin-bottom: 1rem;
         }
 
-        .metadata label {
-            font-weight: 600;
-            font-size: 0.95rem;
-            letter-spacing: 0.01em;
+        .metadata .meta-field:first-child {
+            flex: 1 1 auto;
+            min-height: 0;
         }
 
-        .metadata textarea {
-            flex: 1;
-            width: 100%;
-            min-height: 140px;
+        .metadata .meta-field:not(:first-child) {
+            flex: 0 0 auto;
+        }
+
+        /* textarea in the first field fills available vertical space */
+        .metadata .meta-field:first-child textarea {
+            height: 100%;
             resize: vertical;
-            font-size: 1.2rem;
-            font-family: inherit;
-            padding: 10px 12px;
-            box-sizing: border-box;
-            line-height: 1.5;
-            border: 1px solid #c9ced6;
-            border-radius: 6px;
-            background: #fbfbfd;
+            min-height: 0;
+        }
+
+        .metadata .meta-field:not(:first-child) textarea {
+            resize: vertical;
         }
 
 
@@ -176,12 +191,15 @@
                 const ctx = canvas.getContext('2d');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
-                await page.render({ canvasContext: ctx, viewport }).promise;
+                // set canvas pixel buffer for pdf rendering, but let CSS scale it to the wrapper
+                canvas.style.maxWidth = '100%';
+                canvas.style.height = '100%';
 
                 const overlay = document.createElement('div');
                 overlay.className = 'page-overlay';
-                overlay.style.width = `${viewport.width}px`;
-                overlay.style.height = `${viewport.height}px`;
+                // let overlay fill its parent (pdf-wrapper) via CSS
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
                 overlay.style.backgroundColor = getColorForPage(pageNum - 1);
                 let i = (colorIndices[pageNum - 1] ?? 0) % color_wheel.length;
                 overlay.onclick = () => {
@@ -205,13 +223,22 @@
 
                 const pdfWrapper = document.createElement('div');
                 pdfWrapper.className = 'pdf-container';
+                // make wrapper the exact page height so sibling metadata can match it
+                pdfWrapper.style.height = `${viewport.height}px`;
                 pdfWrapper.appendChild(canvas);
                 pdfWrapper.appendChild(overlay);
+                // Render the PDF page into the canvas (important!)
+                // page.render returns a renderTask with a .promise
+                await page.render({ canvasContext: ctx, viewport }).promise;
 
                 const metadata = await fetchPageMetadata(pageNum - 1);
                 const metadataWrapper = document.createElement('div');
                 metadataWrapper.className = 'metadata';
                 metadataWrapper.id = 'metadata-page-' + pageNum;
+                // match the PDF height so the first textarea can stretch to it
+                metadataWrapper.style.height = `${viewport.height}px`;
+                metadataWrapper.style.display = 'flex';
+                metadataWrapper.style.flexDirection = 'column';
 
                 // Replaced <p> creation with editable fields
                 metadata.forEach(item => {
@@ -229,18 +256,30 @@
                 // If more than one field, let the first fill and others auto-size to content
                 const fields = metadataWrapper.querySelectorAll('.meta-field');
                 if (fields.length > 1) {
-                    fields.forEach(f => {
-                        f.style.flex = 'unset';
-                        const ta = f.querySelector('textarea');
-                        ta.style.height = 'auto';
-                        ta.style.resize = 'vertical';
+                    // make first field grow to fill the height, others remain auto-sized
+                    fields.forEach((f, i) => {
+                        if (i === 0) {
+                            f.style.flex = '1 1 auto';
+                            f.style.minHeight = '0';
+                            const ta = f.querySelector('textarea');
+                            ta.style.height = '100%';
+                            ta.style.minHeight = '0';
+                            ta.style.resize = 'vertical';
+                        } else {
+                            f.style.flex = '0 0 auto';
+                            const ta = f.querySelector('textarea');
+                            ta.style.height = 'auto';
+                            ta.style.resize = 'vertical';
+                        }
                     });
                     metadataWrapper.style.overflow = 'auto';
                 }
 
                 const container = document.createElement('div');
                 container.className = 'content';
+                // set both maxHeight and explicit height so children stretch equally
                 container.style.maxHeight = `${viewport.height}px`;
+                container.style.height = `${viewport.height}px`;
                 container.appendChild(pdfWrapper);
                 container.appendChild(metadataWrapper);
 

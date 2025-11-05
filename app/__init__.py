@@ -1,6 +1,6 @@
-from typing import Any, Dict, List, Optional, Set
+from typing import Optional, Set
 from flask import Flask, render_template, request, jsonify
-from werkzeug.utils import safe_join, secure_filename
+from werkzeug.utils import safe_join
 from werkzeug.exceptions import NotFound
 import os
 import flordb as flor
@@ -183,9 +183,7 @@ def save_colors():
 
 @app.route("/metadata-for-page/<int:page_num>")
 def metadata_for_page(page_num: int):
-    # if page_num == 0:
-    #     # refresh
-    #     memoized_pdfs = flor.utils.latest(flor.dataframe(*feat_names))
+    PASSTHROUGH = False
     assert memoized_pdfs is not None
 
     record = flor.utils.latest(
@@ -211,7 +209,11 @@ def metadata_for_page(page_num: int):
             isinstance(record[config.page_color].values[0], float)
             and math.isnan(record[config.page_color].values[0])
         ):
-            display_text = reflow_ocr_text(record[config.page_text].values[0])
+            display_text = (
+                reflow_ocr_text(record[config.page_text].values[0])
+                if not PASSTHROUGH
+                else record[config.page_text].values[0]
+            )
         else:
             display_text = record[config.page_text].values[0]
         return jsonify([{f"txt-page-{page_num+1}": display_text}])
@@ -405,9 +407,13 @@ def _process_text_blocks(lines: list[str]):
                 continue
             # Canonicalize bullet
             bullet_line = re.sub(r"^\s*[•·●▪‣◦∙*\-]\s*", "- ", line)
-            # If bullet is just "- ", merge with next non-break line
-            if bullet_line.strip() == "-":
-                j = i + 1
+
+            # Start bullet content (may be empty if line is just '-')
+            content = bullet_line[2:].strip()
+
+            j = i + 1
+            # If bullet is just "- ", merge with the next non-break line as starter
+            if content == "":
                 while j < len(lines):
                     next_line = lines[j].strip()
                     if (
@@ -416,11 +422,29 @@ def _process_text_blocks(lines: list[str]):
                         or _is_bullet_start(next_line)
                     ):
                         break
-                    bullet_line = "- " + next_line
-                    i = j  # skip merged line
+                    content = next_line
+                    j += 1
                     break
-            yield bullet_line
-            i += 1
+
+            # Accumulate continuation lines for this bullet until next break
+            while j < len(lines):
+                next_line = lines[j].strip()
+                if (
+                    not next_line
+                    or _is_all_caps_heading(next_line)
+                    or _is_bullet_start(next_line)
+                ):
+                    break
+                # Hyphen-join across line wraps
+                if content.endswith("-"):
+                    content = content[:-1] + next_line
+                else:
+                    content = (content + " " + next_line) if content else next_line
+                j += 1
+
+            yield "- " + content if content else "-"
+
+            i = j
             continue
 
         if not buffer:
