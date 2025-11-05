@@ -10,6 +10,7 @@ import math
 import sys
 import re
 from functools import lru_cache
+import unicodedata
 
 from wordfreq import zipf_frequency, top_n_list
 
@@ -587,7 +588,22 @@ def _post_process(text: str) -> str:
     # Standardize spacing around punctuation and remaining hyphens
     text = re.sub(r"\s+([,.;:!?])", r"\1", text)
     text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)
-    text = text.replace("ﬁ", "fi").replace("ﬂ", "fl")
+
+    # Normalize ligatures and fix mis-mapped glyphs
+    text = unicodedata.normalize("NFKC", text)
+    LIGATURE_FALLBACKS = {
+        "↵": "ff",  # seen when 'ﬀ' is mis-mapped
+        "ﬀ": "ff",
+        "ﬁ": "fi",
+        "ﬂ": "fl",
+        "ﬃ": "ffi",
+        "ﬄ": "ffl",
+        "ﬅ": "ft",
+        "ﬆ": "st",
+    }
+    for k, v in LIGATURE_FALLBACKS.items():
+        text = text.replace(k, v)
+
     text = fix_government(text)
     return text.strip()
 
