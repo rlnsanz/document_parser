@@ -146,7 +146,7 @@
 
             // High-DPI rendering: multiply by devicePixelRatio for crispness
             const dpr = window.devicePixelRatio || 1;
-            const renderScale = cssScale * dpr;
+            const renderScale = cssScale * dpr * 1.25;
 
             const viewportCSS = page.getViewport({ scale: cssScale });
             const viewportRender = page.getViewport({ scale: renderScale });
