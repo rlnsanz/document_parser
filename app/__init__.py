@@ -186,13 +186,14 @@ def save_colors():
 def metadata_for_page(page_num: int):
     PASSTHROUGH = False
     assert memoized_pdfs is not None
+    doc_df = memoized_pdfs[memoized_pdfs["document_value"] == pdf_names[-1]]
 
-    record = flor.utils.latest(
-        memoized_pdfs[
-            (memoized_pdfs["document_value"] == pdf_names[-1])
-            & (memoized_pdfs["page"] == page_num + 1)
-        ]
-    )
+    df = doc_df[doc_df["filename"] == "run.py"]
+    if df.empty:
+        df = doc_df
+    df = flor.utils.latest(df)
+
+    record = df[df["page_value"] == str(page_num)]
     if record.empty:
         warnings.warn(f"No record found for page {page_num} of {pdf_names[-1]}")
         return jsonify([{f"txt-page-{page_num+1}": ""}])

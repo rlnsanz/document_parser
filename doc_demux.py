@@ -13,7 +13,16 @@ from doctr.models import ocr_predictor
 import torch
 
 
-def resize_image(image_path, max_size=(300, 300)):
+# Improve rendering quality
+try:
+    fitz.TOOLS.set_aa_level(8)  # max anti-aliasing for text/graphics
+except Exception:
+    pass
+
+TARGET_DPI = int(flor.arg("dpi", 300))  # override with: dpi=200, dpi=600, etc.
+
+
+def resize_image(image_path, max_size=(1240, 1240)):
     # Open an image file
     with Image.open(image_path) as img:
         # Get original dimensions
@@ -81,8 +90,14 @@ if __name__ == "__main__":
             if skip_ocr:
                 flor.log(config.page_text, page.get_text())
 
-            # Save page PNG
-            pix = page.get_pixmap()
+            # Save page PNG (high DPI, RGB, no alpha)
+            zoom = TARGET_DPI / 72.0
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(
+                matrix=mat,
+                colorspace=fitz.csRGB,
+                alpha=False,
+            )
             output_image = os.path.join(images, f"page_{page_num}.png")
             pix.save(output_image)
 

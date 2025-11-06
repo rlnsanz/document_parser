@@ -139,6 +139,75 @@
             return color_wheel[idx % color_wheel.length];
         }
 
+        // Helper: render one page at high pixel density but fixed CSS width
+        async function renderPageInto(page, targetCssWidth, containerEl, pageIndex) {
+            const baseViewport = page.getViewport({ scale: 1 });
+            const cssScale = targetCssWidth / baseViewport.width;
+
+            // High-DPI rendering: multiply by devicePixelRatio for crispness
+            const dpr = window.devicePixelRatio || 1;
+            const renderScale = cssScale * dpr;
+
+            const viewportCSS = page.getViewport({ scale: cssScale });
+            const viewportRender = page.getViewport({ scale: renderScale });
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d', { alpha: false });
+
+            // Backing store in device pixels
+            canvas.width = Math.floor(viewportRender.width);
+            canvas.height = Math.floor(viewportRender.height);
+
+            // Display size in CSS pixels (fixed-width frame)
+            canvas.style.width = `${Math.floor(viewportCSS.width)}px`;
+            canvas.style.height = `${Math.floor(viewportCSS.height)}px`;
+            canvas.style.maxWidth = '100%';
+            canvas.style.display = 'block';
+
+            // Overlay
+            const overlay = document.createElement('div');
+            overlay.className = 'page-overlay';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = getColorForPage(pageIndex);
+            let i = (colorIndices[pageIndex] ?? 0) % color_wheel.length;
+            overlay.onclick = () => {
+                i = (i + 1) % color_wheel.length;
+                overlay.style.backgroundColor = color_wheel[i];
+
+                // Copy high-res PNG from canvas
+                canvas.toBlob(blob => {
+                    if (!blob) {
+                        alert('Could not copy image to clipboard.');
+                        return;
+                    }
+                    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+                        .catch(err => {
+                            console.error('Clipboard copy failed:', err);
+                            alert('Could not copy image to clipboard.');
+                        });
+                }, 'image/png');
+            };
+
+            const pdfWrapper = document.createElement('div');
+            pdfWrapper.className = 'pdf-container';
+            // Fix the frame size in CSS pixels so metadata can match height
+            pdfWrapper.style.width = `${Math.floor(viewportCSS.width)}px`;
+            pdfWrapper.style.height = `${Math.floor(viewportCSS.height)}px`;
+            pdfWrapper.style.overflow = 'visible';
+
+            pdfWrapper.appendChild(canvas);
+            pdfWrapper.appendChild(overlay);
+
+            // Render at high DPI
+            await page.render({ canvasContext: ctx, viewport: viewportRender }).promise;
+
+            containerEl.appendChild(pdfWrapper);
+
+            // Return CSS height to sync metadata column
+            return Math.floor(viewportCSS.height);
+        }
+
         document.getElementById('save-close-btn').addEventListener('click', () => {
             const overlays = document.getElementsByClassName('page-overlay');
             const colors = Array.from(overlays).map(ov => {
@@ -180,67 +249,33 @@
         async function loadPdf() {
             const url = "{{ url_for('static', filename='private/' + pdf_name) }}";
             const pdf = await pdfjsLib.getDocument(url).promise;
+
             for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
                 const page = await pdf.getPage(pageNum);
-                const baseViewport = page.getViewport({ scale: 1 });
+
+                // Fixed-width frame; image renders at DPR for crispness
                 const targetWidth = Math.min(window.innerWidth * 0.55, 680);
-                const scale = targetWidth / baseViewport.width;
-                const viewport = page.getViewport({ scale });
 
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-                // set canvas pixel buffer for pdf rendering, but let CSS scale it to the wrapper
-                canvas.style.maxWidth = '100%';
-                canvas.style.height = '100%';
+                const container = document.createElement('div');
+                container.className = 'content';
 
-                const overlay = document.createElement('div');
-                overlay.className = 'page-overlay';
-                // let overlay fill its parent (pdf-wrapper) via CSS
-                overlay.style.width = '100%';
-                overlay.style.height = '100%';
-                overlay.style.backgroundColor = getColorForPage(pageNum - 1);
-                let i = (colorIndices[pageNum - 1] ?? 0) % color_wheel.length;
-                overlay.onclick = () => {
-                    i = (i + 1) % color_wheel.length;
-                    overlay.style.backgroundColor = color_wheel[i];
+                // Left column: PDF canvas + overlay
+                const pdfColumn = document.createElement('div');
+                pdfColumn.style.display = 'flex';
+                pdfColumn.style.flexDirection = 'column';
 
-                    // Copy canvas as PNG to clipboard (Mac/modern browsers)
-                    canvas.toBlob(blob => {
-                        if (!blob) {
-                            alert('Could not copy image to clipboard.');
-                            return;
-                        }
-                        navigator.clipboard.write([
-                            new ClipboardItem({ 'image/png': blob })
-                        ]).catch(err => {
-                            console.error('Clipboard copy failed:', err);
-                            alert('Could not copy image to clipboard.');
-                        });
-                    }, 'image/png');
-                };
+                // Render page and get CSS height to match the metadata column
+                const cssHeight = await renderPageInto(page, targetWidth, pdfColumn, pageNum - 1);
 
-                const pdfWrapper = document.createElement('div');
-                pdfWrapper.className = 'pdf-container';
-                // make wrapper the exact page height so sibling metadata can match it
-                pdfWrapper.style.height = `${viewport.height}px`;
-                pdfWrapper.appendChild(canvas);
-                pdfWrapper.appendChild(overlay);
-                // Render the PDF page into the canvas (important!)
-                // page.render returns a renderTask with a .promise
-                await page.render({ canvasContext: ctx, viewport }).promise;
-
+                // Right column: metadata
                 const metadata = await fetchPageMetadata(pageNum - 1);
                 const metadataWrapper = document.createElement('div');
                 metadataWrapper.className = 'metadata';
                 metadataWrapper.id = 'metadata-page-' + pageNum;
-                // match the PDF height so the first textarea can stretch to it
-                metadataWrapper.style.height = `${viewport.height}px`;
+                metadataWrapper.style.height = `${cssHeight}px`;
                 metadataWrapper.style.display = 'flex';
                 metadataWrapper.style.flexDirection = 'column';
 
-                // Replaced <p> creation with editable fields
                 metadata.forEach(item => {
                     Object.entries(item).forEach(([k, v]) => {
                         const field = document.createElement('div');
@@ -253,10 +288,8 @@
                     });
                 });
 
-                // If more than one field, let the first fill and others auto-size to content
                 const fields = metadataWrapper.querySelectorAll('.meta-field');
                 if (fields.length > 1) {
-                    // make first field grow to fill the height, others remain auto-sized
                     fields.forEach((f, i) => {
                         if (i === 0) {
                             f.style.flex = '1 1 auto';
@@ -275,14 +308,12 @@
                     metadataWrapper.style.overflow = 'auto';
                 }
 
-                const container = document.createElement('div');
-                container.className = 'content';
-                // set both maxHeight and explicit height so children stretch equally
-                container.style.maxHeight = `${viewport.height}px`;
-                container.style.height = `${viewport.height}px`;
-                container.appendChild(pdfWrapper);
-                container.appendChild(metadataWrapper);
+                // Keep the container height fixed to the page frame height
+                container.style.maxHeight = `${cssHeight}px`;
+                container.style.height = `${cssHeight}px`;
 
+                container.appendChild(pdfColumn);
+                container.appendChild(metadataWrapper);
                 document.body.appendChild(container);
             }
         }
